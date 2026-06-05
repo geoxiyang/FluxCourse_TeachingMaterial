@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TLS Plot Viewer — FluxCourse</title>
+<!-- OFFLINE NOTE: before class, replace the cdnjs URL below with a local
+     "three.min.js" (relative path) so the viewer runs with no internet. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#080b0a; --panel:#0f1614; --panel-2:#15201d; --edge:#243430;
+    --ink:#d6e4de; --ink-dim:#7d918a; --accent:#2ee6a6; --accent-2:#ffb454;
+    --danger:#ff6b6b; --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:var(--mono);font-size:13px;-webkit-font-smoothing:antialiased}
+  #app{position:fixed;inset:0}
+  canvas{display:block}
+  .panel{position:absolute;background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--edge);border-radius:10px;backdrop-filter:blur(6px);
+    box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  .panel h2{margin:0;padding:9px 12px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);border-bottom:1px solid var(--edge);font-weight:600}
+  .panel .body{padding:11px 12px}
+  #controls{top:14px;left:14px;width:248px}
+  #checklist{top:14px;right:14px;width:252px}
+  #hud{bottom:14px;left:14px;padding:9px 13px;font-size:11px;color:var(--ink-dim);line-height:1.7}
+  #hud b{color:var(--ink);font-weight:600}
+  #legend{bottom:14px;right:14px;width:172px}
+  .row{margin:9px 0}
+  .row:first-child{margin-top:0}
+  label.lab{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-dim);margin-bottom:5px}
+  .btns{display:flex;gap:5px;flex-wrap:wrap}
+  button{font-family:var(--mono);font-size:11px;color:var(--ink);background:#0d1513;
+    border:1px solid var(--edge);border-radius:6px;padding:6px 9px;cursor:pointer;transition:.12s;flex:1}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.on{background:var(--accent);color:#062019;border-color:var(--accent);font-weight:700}
+  button.amber.on{background:var(--accent-2);color:#2a1800;border-color:var(--accent-2)}
+  button.wide{width:100%;flex:none}
+  button.ghost{background:transparent}
+  input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
+  .val{float:right;color:var(--accent);font-weight:600}
+  .file{position:relative;overflow:hidden;display:inline-block;width:100%}
+  .file input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+  hr{border:none;border-top:1px solid var(--edge);margin:11px -12px}
+  ol{margin:0;padding:0;list-style:none;counter-reset:step}
+  ol li{position:relative;padding:7px 0 7px 28px;font-size:12px;color:var(--ink-dim);
+    line-height:1.35;cursor:pointer;counter-increment:step}
+  ol li::before{content:counter(step);position:absolute;left:0;top:6px;width:18px;height:18px;
+    border:1px solid var(--edge);border-radius:50%;text-align:center;line-height:17px;font-size:10px}
+  ol li.done{color:var(--ink)}
+  ol li.done::before{content:"✓";background:var(--accent);color:#062019;border-color:var(--accent);font-weight:700}
+  #legend .ramp{height:12px;border-radius:3px;margin:4px 0 6px}
+  #legend .ends{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-dim)}
+  #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:var(--panel-2);
+    border:1px solid var(--accent);color:var(--ink);padding:8px 16px;border-radius:8px;font-size:12px;
+    opacity:0;transition:.25s;pointer-events:none}
+  #toast.show{opacity:1}
+  #back{display:none;position:absolute;top:14px;left:50%;transform:translateX(-50%)}
+  #back button{background:var(--accent-2);color:#2a1800;border-color:var(--accent-2);font-weight:700;padding:8px 18px}
+  .badge{display:inline-block;background:#0d1513;border:1px solid var(--edge);border-radius:4px;
+    padding:1px 6px;color:var(--accent-2);font-size:10px}
+  .hint{font-size:10px;color:var(--ink-dim);margin-top:6px;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="controls" class="panel">
+  <h2>Plot Viewer</h2>
+  <div class="body">
+    <div class="row">
+      <label class="lab">Color by</label>
+      <div class="btns">
+        <button id="cm-h" class="on" onclick="setColor(0)">Height</button>
+        <button id="cm-i" onclick="setColor(1)">Intensity</button>
+      </div>
+    </div>
+    <div class="row">
+      <label class="lab">View</label>
+      <div class="btns">
+        <button onclick="preset('top')">Top</button>
+        <button onclick="preset('side')">Side</button>
+        <button onclick="preset('iso')">Iso</button>
+      </div>
+    </div>
+    <div class="row">
+      <label class="lab">Point size <span class="val" id="ps-v">2.0</span></label>
+      <input type="range" id="ps" min="0.5" max="6" step="0.1" value="2" oninput="setPS(this.value)">
+    </div>
+    <hr>
+    <div class="row">
+      <div class="btns">
+        <button id="slice-btn" class="amber" onclick="toggleSlice()">Slice ▢</button>
+        <button onclick="breastHeight()">↧ 1.3 m</button>
+      </div>
+    </div>
+    <div class="row" id="slice-ctl" style="display:none">
+      <label class="lab">Slice center <span class="val" id="sc-v">1.3 m</span></label>
+      <input type="range" id="sc" min="0" max="20" step="0.05" value="1.3" oninput="setSlice()">
+      <label class="lab" style="margin-top:7px">Thickness <span class="val" id="st-v">0.10 m</span></label>
+      <input type="range" id="st" min="0.02" max="2" step="0.02" value="0.1" oninput="setSlice()">
+    </div>
+    <hr>
+    <div class="row">
+      <button id="dbh-btn" class="amber wide" onclick="toggleDBH()">⊕ Measure DBH</button>
+      <div class="hint" id="dbh-hint" style="display:none">Click ≥3 points around a stem outline, then <b>Fit</b>.</div>
+      <div class="btns" id="dbh-actions" style="display:none;margin-top:7px">
+        <button onclick="fitDBH()">Fit</button>
+        <button onclick="clearDBHpts()">Clear</button>
+      </div>
+    </div>
+    <hr>
+    <div class="row">
+      <label class="lab">Load data</label>
+      <div class="file"><button class="wide ghost">⤓ Plot .ply…</button>
+        <input type="file" accept=".ply" onchange="loadFile(event,false)"></div>
+      <div class="file" style="margin-top:5px"><button class="wide ghost">⤓ Tree .ply…</button>
+        <input type="file" accept=".ply" onchange="loadFile(event,true)"></div>
+      <div class="hint">Showing synthetic demo. Load your processed files to replace it.</div>
+    </div>
+  </div>
+</div>
+
+<div id="checklist" class="panel">
+  <h2>Your task — 8 min</h2>
+  <div class="body">
+    <ol id="tasks">
+      <li data-k="orbit">Orbit the plot — drag to rotate, scroll to zoom</li>
+      <li data-k="top">Switch to the <b>Top</b> view</li>
+      <li data-k="slice">Turn on <b>Slice</b> to cut a horizontal layer</li>
+      <li data-k="bh">Set the slice to breast height (<b>1.3 m</b>)</li>
+      <li data-k="scan">Find the 3 scanner positions <span class="badge">◆</span></li>
+      <li data-k="dbh">Measure one stem's <b>DBH</b></li>
+      <li data-k="tree">Click a tree <span class="badge">●</span> to descend into it</li>
+    </ol>
+  </div>
+</div>
+
+<div id="hud" class="panel">
+  <div>points <b id="np">—</b> · mode <b id="md">plot</b></div>
+  <div id="cursor">cursor —</div>
+  <div id="dbh-out">DBH —</div>
+</div>
+
+<div id="legend" class="panel">
+  <h2 id="leg-title">Height</h2>
+  <div class="body">
+    <div class="ramp" id="ramp"></div>
+    <div class="ends"><span id="leg-lo">0 m</span><span id="leg-hi">— m</span></div>
+  </div>
+</div>
+
+<div id="back"><button onclick="backToPlot()">← Back to plot</button></div>
+<div id="toast"></div>
+
+<script>
+/* ============================ globals ============================ */
+let renderer, scene, camera, pts, mat, raycaster=new THREE.Raycaster();
+let markerGroup, measureGroup;
+let mode='plot', treeBuffer=null, plotData=null;
+let bounds={min:[0,0,0],max:[1,1,1]};
+let colorMode=0, sliceOn=false, dbhMode=false;
+let dbhPts=[], treeMeshes=[];
+const W=()=>innerWidth, H=()=>innerHeight;
+
+/* ============================ custom orbit controls ============================ */
+const ctrl={target:new THREE.Vector3(),radius:30,theta:0.7,phi:1.0,
+  apply(){const r=this.radius,p=this.phi,t=this.theta;
+    camera.position.set(this.target.x+r*Math.sin(p)*Math.sin(t),
+      this.target.y+r*Math.sin(p)*Math.cos(t), this.target.z+r*Math.cos(p));
+    camera.up.set(0,0,1); camera.lookAt(this.target);}};
+
+/* ============================ shaders ============================ */
+const VERT=`
+  attribute float intensity;
+  uniform float uPS,uSizeScale,uZMin,uZMax;
+  uniform int uMode; uniform bool uSliceOn; uniform float uSMin,uSMax;
+  varying vec3 vC; varying float vHide;
+  vec3 turbo(float x){
+    vec3 c=vec3(
+      0.1357+x*(4.6154+x*(-42.660+x*(132.13+x*(-152.94+x*59.286)))),
+      0.0914+x*(2.1942+x*(4.8430+x*(-14.185+x*(4.2773+x*2.8296)))),
+      0.1067+x*(12.642+x*(-60.582+x*(110.36+x*(-89.903+x*27.348)))));
+    return clamp(c,0.0,1.0);}
+  void main(){
+    float t;
+    if(uMode==0){ t=(position.z-uZMin)/max(uZMax-uZMin,1e-4); vC=turbo(clamp(t,0.0,1.0)); }
+    else { t=intensity; vC=mix(vec3(0.07,0.08,0.08),vec3(1.0,0.86,0.55),pow(t,0.85)); }
+    vHide=(uSliceOn && (position.z<uSMin||position.z>uSMax))?1.0:0.0;
+    vec4 mv=modelViewMatrix*vec4(position,1.0);
+    gl_PointSize=max(1.0,uPS*(uSizeScale/ -mv.z));
+    gl_Position=projectionMatrix*mv;}`;
+const FRAG=`
+  varying vec3 vC; varying float vHide;
+  void main(){ if(vHide>0.5) discard;
+    vec2 d=gl_PointCoord-0.5; if(dot(d,d)>0.25) discard;
+    gl_FragColor=vec4(vC,1.0);}`;
+
+/* ============================ init ============================ */
+function init(){
+  renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(W(),H()); renderer.setClearColor(0x080b0a,1);
+  document.getElementById('app').appendChild(renderer.domElement);
+  scene=new THREE.Scene();
+  scene.fog=new THREE.FogExp2(0x080b0a,0.004);
+  camera=new THREE.PerspectiveCamera(55,W()/H(),0.05,5000);
+  markerGroup=new THREE.Group(); measureGroup=new THREE.Group();
+  scene.add(markerGroup,measureGroup);
+  mat=new THREE.ShaderMaterial({uniforms:{
+    uPS:{value:2},uSizeScale:{value:600},uZMin:{value:0},uZMax:{value:1},
+    uMode:{value:0},uSliceOn:{value:false},uSMin:{value:0},uSMax:{value:1}},
+    vertexShader:VERT,fragmentShader:FRAG});
+  mat.uniforms.uSizeScale.value=sizeScale();
+  addEvents();
+  loadData(makeSyntheticPlot(),false);
+  animate();
+}
+function sizeScale(){return H()*0.5/Math.tan(camera?camera.fov*Math.PI/360:0.5);}
+
+/* ============================ data loading ============================ */
+const PLY_SIZES={char:1,uchar:1,int8:1,uint8:1,short:2,ushort:2,int16:2,uint16:2,
+  int:4,uint:4,int32:4,uint32:4,float:4,float32:4,double:8,float64:8};
+function plyRead(dv,off,type,le){switch(type){
+  case'float':case'float32':return dv.getFloat32(off,le);
+  case'double':case'float64':return dv.getFloat64(off,le);
+  case'uchar':case'uint8':return dv.getUint8(off);
+  case'char':case'int8':return dv.getInt8(off);
+  case'ushort':case'uint16':return dv.getUint16(off,le);
+  case'short':case'int16':return dv.getInt16(off,le);
+  case'uint':case'uint32':return dv.getUint32(off,le);
+  default:return dv.getInt32(off,le);}}
+function parsePLY(buf){
+  const bytes=new Uint8Array(buf);
+  // locate end_header
+  const seq=[101,110,100,95,104,101,97,100,101,114]; // "end_header"
+  let hEnd=-1;
+  outer: for(let i=0;i<bytes.length-seq.length;i++){
+    for(let j=0;j<seq.length;j++) if(bytes[i+j]!==seq[j]) continue outer;
+    hEnd=i+seq.length; break;
+  }
+  if(hEnd<0) throw new Error('not a PLY file');
+  while(hEnd<bytes.length && bytes[hEnd]!==10) hEnd++;   // to newline
+  const bodyStart=hEnd+1;
+  const headerText=new TextDecoder().decode(bytes.subarray(0,bodyStart));
+
+  let n=0, le=true, props=[], meta={};
+  for(const line of headerText.split('\n')){
+    const t=line.trim();
+    if(t.startsWith('format')){ le=!t.includes('big_endian');
+      if(t.includes('ascii')) throw new Error('ASCII PLY not supported — export as binary'); }
+    else if(t.startsWith('comment fluxviewer ')){ try{meta=JSON.parse(t.slice(19));}catch(e){} }
+    else if(t.startsWith('element vertex')) n=parseInt(t.split(/\s+/)[2],10);
+    else if(t.startsWith('property')){ const p=t.split(/\s+/);
+      if(p[1]!=='list') props.push({type:p[1],name:p[2]}); }
+  }
+  // byte offsets within each vertex record
+  let stride=0; const map={};
+  for(const p of props){ map[p.name]={type:p.type,off:stride}; stride+=PLY_SIZES[p.type]||4; }
+  if(!('x'in map&&'y'in map&&'z'in map)) throw new Error('PLY missing x/y/z');
+
+  const dv=new DataView(buf,bodyStart);
+  const positions=new Float32Array(n*3);
+  const hasI=('intensity'in map);
+  const rawI=hasI?new Float64Array(n):null;
+  const X=map.x,Y=map.y,Z=map.z,I=map.intensity;
+  let mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity], iMax=0;
+  for(let i=0;i<n;i++){
+    const b=i*stride;
+    const x=plyRead(dv,b+X.off,X.type,le),
+          y=plyRead(dv,b+Y.off,Y.type,le),
+          z=plyRead(dv,b+Z.off,Z.type,le);
+    positions[i*3]=x; positions[i*3+1]=y; positions[i*3+2]=z;
+    if(x<mn[0])mn[0]=x; if(y<mn[1])mn[1]=y; if(z<mn[2])mn[2]=z;
+    if(x>mx[0])mx[0]=x; if(y>mx[1])mx[1]=y; if(z>mx[2])mx[2]=z;
+    if(hasI){ const v=plyRead(dv,b+I.off,I.type,le); rawI[i]=v; if(v>iMax)iMax=v; }
+  }
+  // intensity -> uint8 0..255 (uchar passes through; wider types scaled by max)
+  const intensity=new Uint8Array(n);
+  if(hasI){
+    const isByte=(I.type==='uchar'||I.type==='uint8');
+    const scale=isByte?1:(iMax>0?255/iMax:0);
+    for(let i=0;i<n;i++) intensity[i]=Math.min(255,Math.round(rawI[i]*scale));
+  }
+  const header={bounds:{min:mn,max:mx},scanners:meta.scanners||[],trees:meta.trees||[],
+                offset:meta.offset||[0,0,0],label:meta.label||''};
+  return {header,positions,intensity,n};
+}
+function loadData(d,isTree){
+  if(pts){scene.remove(pts);pts.geometry.dispose();}
+  clearMarkers(); clearDBHpts();
+  if(!isTree) plotData=d;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(d.positions,3));
+  g.setAttribute('intensity',new THREE.BufferAttribute(d.intensity,1,true)); // normalized 0..1
+  pts=new THREE.Points(g,mat); scene.add(pts);
+  bounds=d.header.bounds;
+  mat.uniforms.uZMin.value=bounds.min[2]; mat.uniforms.uZMax.value=bounds.max[2];
+  document.getElementById('np').textContent=d.n.toLocaleString();
+  updateLegend();
+  if(!isTree) placeMarkers(d.header);
+  frameCamera();
+  document.getElementById('sc').max=(bounds.max[2]).toFixed(1);
+}
+async function loadFile(ev,isTree){
+  const f=ev.target.files[0]; if(!f) return;
+  toast('Loading '+f.name+' …');
+  const buf=await f.arrayBuffer();
+  try{
+    const d=parsePLY(buf);
+    if(isTree){ treeBuffer=d; toast('Tree loaded — click a tree marker to descend'); }
+    else { loadData(d,false); mode='plot'; document.getElementById('md').textContent='plot';
+           document.getElementById('back').style.display='none';
+           toast('Plot loaded: '+d.n.toLocaleString()+' pts'); }
+  }catch(e){ toast('⚠ '+e.message); }
+}
+
+/* ============================ markers ============================ */
+function clearMarkers(){while(markerGroup.children.length)markerGroup.remove(markerGroup.children[0]);treeMeshes=[];}
+function placeMarkers(hdr){
+  clearMarkers();
+  (hdr.scanners||[]).forEach(s=>{
+    const m=new THREE.Mesh(new THREE.OctahedronGeometry(0.45),
+      new THREE.MeshBasicMaterial({color:0xffb454}));
+    m.position.set(s.x,s.y,(s.z||0)+1.6); m.userData.scanner=true; markerGroup.add(m);
+    const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,1.6,6),
+      new THREE.MeshBasicMaterial({color:0xffb454,transparent:true,opacity:.5}));
+    stem.position.set(s.x,s.y,(s.z||0)+0.8); stem.rotation.x=Math.PI/2; markerGroup.add(stem);
+  });
+  (hdr.trees||[]).forEach(t=>{
+    const m=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,12),
+      new THREE.MeshBasicMaterial({color:0x2ee6a6,transparent:true,opacity:.85}));
+    m.position.set(t.x,t.y,(t.z||0)+0.6); m.userData.tree=t; markerGroup.add(m); treeMeshes.push(m);
+    const ring=new THREE.Mesh(new THREE.RingGeometry(0.7,0.85,24),
+      new THREE.MeshBasicMaterial({color:0x2ee6a6,transparent:true,opacity:.4,side:THREE.DoubleSide}));
+    ring.position.set(t.x,t.y,(t.z||0)+0.05); markerGroup.add(ring);
+  });
+}
+
+/* ============================ camera ============================ */
+function frameCamera(){
+  const c=[(bounds.min[0]+bounds.max[0])/2,(bounds.min[1]+bounds.max[1])/2,(bounds.min[2]+bounds.max[2])/2];
+  const ext=Math.max(bounds.max[0]-bounds.min[0],bounds.max[1]-bounds.min[1],bounds.max[2]-bounds.min[2]);
+  ctrl.target.set(c[0],c[1],c[2]); ctrl.radius=ext*1.4||30; ctrl.theta=0.7; ctrl.phi=1.05; ctrl.apply();
+}
+function preset(p){
+  if(p==='top'){ctrl.phi=0.01;ctrl.theta=0;done('top');}
+  if(p==='side'){ctrl.phi=Math.PI/2;ctrl.theta=0;}
+  if(p==='iso'){ctrl.phi=1.05;ctrl.theta=0.7;}
+  ctrl.apply();
+}
+
+/* ============================ UI actions ============================ */
+function setColor(m){colorMode=m;mat.uniforms.uMode.value=m;
+  document.getElementById('cm-h').classList.toggle('on',m===0);
+  document.getElementById('cm-i').classList.toggle('on',m===1);updateLegend();}
+function fmt1(v){return (+v).toFixed(1);}
+function setPS(v){mat.uniforms.uPS.value=+v;document.getElementById('ps-v').textContent=fmt1(v);}
+function toggleSlice(){sliceOn=!sliceOn;mat.uniforms.uSliceOn.value=sliceOn;
+  document.getElementById('slice-btn').classList.toggle('on',sliceOn);
+  document.getElementById('slice-btn').textContent=sliceOn?'Slice ▣':'Slice ▢';
+  document.getElementById('slice-ctl').style.display=sliceOn?'block':'none';
+  if(sliceOn){setSlice();done('slice');}}
+function setSlice(){
+  const c=+document.getElementById('sc').value, t=+document.getElementById('st').value;
+  mat.uniforms.uSMin.value=c-t/2; mat.uniforms.uSMax.value=c+t/2;
+  document.getElementById('sc-v').textContent=c.toFixed(2)+' m';
+  document.getElementById('st-v').textContent=t.toFixed(2)+' m';}
+function breastHeight(){if(!sliceOn)toggleSlice();
+  document.getElementById('sc').value=1.3;document.getElementById('st').value=0.1;
+  setSlice();preset('top');done('bh');}
+
+/* ---- DBH ---- */
+function toggleDBH(){dbhMode=!dbhMode;
+  document.getElementById('dbh-btn').classList.toggle('on',dbhMode);
+  document.getElementById('dbh-hint').style.display=dbhMode?'block':'none';
+  document.getElementById('dbh-actions').style.display=dbhMode?'flex':'none';
+  if(dbhMode && !sliceOn) breastHeight();
+  if(!dbhMode) clearDBHpts();}
+function clearDBHpts(){dbhPts=[];while(measureGroup.children.length)measureGroup.remove(measureGroup.children[0]);}
+function addDBHpt(p){dbhPts.push(p);
+  const m=new THREE.Mesh(new THREE.SphereGeometry(0.04,8,6),
+    new THREE.MeshBasicMaterial({color:0xff6b6b}));
+  m.position.copy(p);measureGroup.add(m);}
+function circleFit(P){ // Kåsa algebraic fit on XY
+  let n=P.length,sx=0,sy=0,sxx=0,syy=0,sxy=0,sxz=0,syz=0,sz=0;
+  for(const p of P){const x=p.x,y=p.y,z=x*x+y*y;sx+=x;sy+=y;sxx+=x*x;syy+=y*y;sxy+=x*y;sxz+=x*z;syz+=y*z;sz+=z;}
+  const A=[[sxx,sxy,sx],[sxy,syy,sy],[sx,sy,n]],B=[sxz,syz,sz];
+  const s=solve3(A,B); if(!s) return null;
+  const cx=s[0]/2,cy=s[1]/2,R=Math.sqrt(Math.max(0,s[2]+cx*cx+cy*cy));
+  return {cx,cy,R};}
+function solve3(A,b){const M=A.map((r,i)=>[...r,b[i]]);
+  for(let i=0;i<3;i++){let p=i;for(let r=i+1;r<3;r++)if(Math.abs(M[r][i])>Math.abs(M[p][i]))p=r;
+    [M[i],M[p]]=[M[p],M[i]]; if(Math.abs(M[i][i])<1e-9)return null;
+    for(let r=0;r<3;r++)if(r!==i){const f=M[r][i]/M[i][i];for(let c=i;c<4;c++)M[r][c]-=f*M[i][c];}}
+  return [M[0][3]/M[0][0],M[1][3]/M[1][1],M[2][3]/M[2][2]];}
+function fitDBH(){
+  if(dbhPts.length<3){toast('Click at least 3 points');return;}
+  const f=circleFit(dbhPts); if(!f){toast('Fit failed — spread points around the stem');return;}
+  const z=+document.getElementById('sc').value;
+  const ring=new THREE.Mesh(new THREE.RingGeometry(Math.max(0.001,f.R-0.01),f.R+0.01,48),
+    new THREE.MeshBasicMaterial({color:0xff6b6b,side:THREE.DoubleSide}));
+  ring.position.set(f.cx,f.cy,z);measureGroup.add(ring);
+  const dbh=(f.R*2*100);
+  document.getElementById('dbh-out').innerHTML='DBH <b style="color:var(--accent)">'+dbh.toFixed(1)+' cm</b> (r='+(f.R*100).toFixed(1)+' cm)';
+  toast('DBH = '+dbh.toFixed(1)+' cm');
+  dbhPts=[]; done('dbh');
+}
+
+/* ---- descend / back ---- */
+function descend(tree){
+  const d = treeBuffer ? treeBuffer : makeSyntheticTree();
+  loadData(d,true);
+  mode='tree'; document.getElementById('md').textContent='tree '+(tree&&tree.id?('#'+tree.id):'');
+  document.getElementById('back').style.display='block';
+  if(!treeBuffer) toast('Demo tree — load a Tree .ply for real data');
+  done('tree');
+}
+function backToPlot(){
+  if(!plotData)return;
+  loadData(plotData,false);
+  mode='plot';document.getElementById('md').textContent='plot';
+  document.getElementById('back').style.display='none';
+}
+
+/* ============================ legend ============================ */
+function updateLegend(){
+  const t=document.getElementById('leg-title');
+  const ramp=document.getElementById('ramp');
+  if(colorMode===0){t.textContent='Height';
+    ramp.style.background='linear-gradient(90deg,#30123b,#28bceb,#a4fc3c,#fb8022,#7a0403)';
+    document.getElementById('leg-lo').textContent=bounds.min[2].toFixed(1)+' m';
+    document.getElementById('leg-hi').textContent=bounds.max[2].toFixed(1)+' m';}
+  else{t.textContent='Intensity';
+    ramp.style.background='linear-gradient(90deg,#121313,#ffb454,#fff)';
+    document.getElementById('leg-lo').textContent='low';
+    document.getElementById('leg-hi').textContent='high';}
+}
+
+/* ============================ events ============================ */
+function addEvents(){
+  const el=renderer.domElement;
+  let down=false,btn=0,px=0,py=0,moved=0;
+  el.addEventListener('pointerdown',e=>{down=true;btn=e.button;px=e.clientX;py=e.clientY;moved=0;});
+  el.addEventListener('pointermove',e=>{
+    document.getElementById('cursor').textContent=worldCursor(e);
+    if(!down)return;const dx=e.clientX-px,dy=e.clientY-py;moved+=Math.abs(dx)+Math.abs(dy);
+    if(btn===0&&!e.shiftKey){ctrl.theta-=dx*0.005;ctrl.phi=Math.max(0.01,Math.min(Math.PI-0.01,ctrl.phi-dy*0.005));
+      if(moved>10)done('orbit');}
+    else{const pan=ctrl.radius*0.0015;
+      const right=new THREE.Vector3().crossVectors(
+        new THREE.Vector3().subVectors(ctrl.target,camera.position).normalize(),camera.up).normalize();
+      const up=camera.up.clone();
+      ctrl.target.addScaledVector(right,-dx*pan);ctrl.target.addScaledVector(up,dy*pan);}
+    px=e.clientX;py=e.clientY;ctrl.apply();});
+  addEventListener('pointerup',e=>{ if(down&&moved<8) onClick(e); down=false;});
+  el.addEventListener('wheel',e=>{e.preventDefault();
+    ctrl.radius*=(1+Math.sign(e.deltaY)*0.1);ctrl.radius=Math.max(0.5,ctrl.radius);ctrl.apply();},{passive:false});
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+  addEventListener('resize',()=>{camera.aspect=W()/H();camera.updateProjectionMatrix();
+    renderer.setSize(W(),H());mat.uniforms.uSizeScale.value=sizeScale();});
+}
+function ndc(e){return new THREE.Vector2((e.clientX/W())*2-1,-(e.clientY/H())*2+1);}
+function worldCursor(e){
+  if(mode!=='plot')return 'cursor —';
+  raycaster.setFromCamera(ndc(e),camera);
+  const z=sliceOn?+document.getElementById('sc').value:0;
+  const pl=new THREE.Plane(new THREE.Vector3(0,0,1),-z);const p=new THREE.Vector3();
+  if(raycaster.ray.intersectPlane(pl,p))return 'x '+p.x.toFixed(2)+'  y '+p.y.toFixed(2)+'  z '+z.toFixed(2);
+  return 'cursor —';}
+function onClick(e){
+  raycaster.setFromCamera(ndc(e),camera);
+  if(dbhMode){
+    const z=+document.getElementById('sc').value;
+    const pl=new THREE.Plane(new THREE.Vector3(0,0,1),-z);const p=new THREE.Vector3();
+    if(raycaster.ray.intersectPlane(pl,p))addDBHpt(p);
+    return;
+  }
+  if(mode==='plot'&&treeMeshes.length){
+    const hit=raycaster.intersectObjects(treeMeshes,false);
+    if(hit.length){descend(hit[0].object.userData.tree);}
+  }
+}
+
+/* ============================ checklist + toast ============================ */
+function done(k){const li=document.querySelector('#tasks li[data-k="'+k+'"]');if(li)li.classList.add('done');}
+document.querySelectorAll('#tasks li').forEach(li=>li.onclick=()=>li.classList.toggle('done'));
+let toastT;
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ============================ synthetic demo data ============================ */
+function makeSyntheticPlot(){
+  const scanners=[],pos=[],inten=[],trc=[]; const SZ=30;
+  for(let i=0;i<120000;i++){const x=Math.random()*SZ,y=Math.random()*SZ;
+    pos.push(x,y,0.2*Math.sin(x/5)+0.15*Math.random());inten.push(40+Math.random()*40);}
+  for(let k=0;k<22;k++){const cx=3+Math.random()*24,cy=3+Math.random()*24,
+    h=8+Math.random()*9,r=0.08+Math.random()*0.14;
+    trc.push({x:cx,y:cy,z:0,id:k+1});
+    for(let i=0;i<2200;i++){const a=Math.random()*6.283,zz=Math.random()*h;
+      pos.push(cx+r*Math.cos(a),cy+r*Math.sin(a),zz);inten.push(110+Math.random()*70);}
+    const cr=1.4+Math.random()*1.6;
+    for(let i=0;i<3200;i++){const a=Math.random()*6.283,rr=cr*Math.sqrt(Math.random()),
+      zz=h*0.4+Math.random()*h*0.6;
+      pos.push(cx+rr*Math.cos(a),cy+rr*Math.sin(a),zz);inten.push(180+Math.random()*70);}}
+  [[2,2],[28,2],[15,28]].forEach(s=>scanners.push({x:s[0],y:s[1],z:0}));
+  const P=new Float32Array(pos),I=new Uint8Array(inten.map(v=>Math.min(255,v)));
+  const n=P.length/3;let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+  for(let i=0;i<n;i++)for(let j=0;j<3;j++){const v=P[i*3+j];if(v<mn[j])mn[j]=v;if(v>mx[j])mx[j]=v;}
+  return {positions:P,intensity:I,n,header:{bounds:{min:mn,max:mx},trees:trc,scanners}};
+}
+function makeSyntheticTree(){
+  const pos=[],inten=[],h=14;
+  for(let i=0;i<60000;i++){const a=Math.random()*6.283,zz=Math.random()*h,
+    r=0.18*(1-zz/h/1.5);pos.push(r*Math.cos(a),r*Math.sin(a),zz);inten.push(120+Math.random()*60);}
+  for(let b=0;b<40;b++){const bz=h*0.4+Math.random()*h*0.5,ba=Math.random()*6.283,bl=1+Math.random()*2.5;
+    for(let i=0;i<2500;i++){const tt=Math.random(),rr=tt*bl;
+      pos.push(rr*Math.cos(ba)+(Math.random()-.5)*0.6,rr*Math.sin(ba)+(Math.random()-.5)*0.6,
+               bz+tt*1.5+(Math.random()-.5)*0.5);inten.push(190+Math.random()*60);}}
+  const P=new Float32Array(pos),I=new Uint8Array(inten.map(v=>Math.min(255,v)));
+  const n=P.length/3;let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+  for(let i=0;i<n;i++)for(let j=0;j<3;j++){const v=P[i*3+j];if(v<mn[j])mn[j]=v;if(v>mx[j])mx[j]=v;}
+  return {positions:P,intensity:I,n,header:{bounds:{min:mn,max:mx}}};
+}
+
+/* ============================ loop ============================ */
+function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}
+init();
+</script>
+</body>
+</html>

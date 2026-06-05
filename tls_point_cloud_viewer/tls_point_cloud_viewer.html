@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TLS Point Cloud Explorer</title>
+  <style>
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      --color-text-primary: #1a1a18;
+      --color-text-secondary: #6b6a63;
+      --color-border-tertiary: rgba(0,0,0,0.12);
+      --color-border-secondary: rgba(0,0,0,0.24);
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f4f3ef;
+      --color-accent: #1D9E75;
+      --color-warm: #EF9F27;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-text-primary: #e6e4dc;
+        --color-text-secondary: #9c9a92;
+        --color-border-tertiary: rgba(255,255,255,0.12);
+        --color-border-secondary: rgba(255,255,255,0.24);
+        --color-background-primary: #18181a;
+        --color-background-secondary: #222224;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      padding: 2.5rem 2rem;
+      line-height: 1.6;
+    }
+    button, input, select {
+      color: inherit;
+      font: inherit;
+    }
+    button {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+    .wrap { max-width: 1320px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+    .sub { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 1.5rem; max-width: 840px; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .toolbar label,
+    .mini-label {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      white-space: nowrap;
+    }
+    .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .buttons button,
+    .reset,
+    .small-button {
+      min-height: 34px;
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-secondary);
+      padding: 6px 12px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+    }
+    .buttons button:hover,
+    .reset:hover,
+    .small-button:hover {
+      border-color: var(--color-border-secondary);
+      color: var(--color-text-primary);
+    }
+    .buttons button.active {
+      background: var(--color-text-primary);
+      border-color: var(--color-text-primary);
+      color: var(--color-background-primary);
+    }
+    .small-button:disabled {
+      cursor: default;
+      opacity: 0.42;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 308px;
+      gap: 16px;
+      align-items: start;
+    }
+    .pn {
+      background: var(--color-background-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-lg);
+      padding: 16px 18px;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+    .ph { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+    .ps { font-size: 13px; color: var(--color-text-secondary); }
+    .mn {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--color-background-primary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: var(--color-text-primary);
+      white-space: nowrap;
+    }
+    .viewer-wrap {
+      position: relative;
+      width: 100%;
+      min-height: 520px;
+      height: min(66vh, 720px);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-primary);
+      overflow: hidden;
+    }
+    #viewer,
+    #cut-overlay {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #cut-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .status {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      max-width: min(520px, calc(100% - 28px));
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-text-primary);
+      background: color-mix(in srgb, var(--color-background-primary) 88%, transparent);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 4px;
+      padding: 7px 9px;
+    }
+    .legend {
+      display: grid;
+      grid-template-columns: 56px 1fr 56px;
+      gap: 10px;
+      align-items: center;
+      margin: 12px 0 14px;
+      color: var(--color-text-secondary);
+      font-size: 12px;
+    }
+    .ramp {
+      height: 10px;
+      border-radius: 999px;
+      border: 0.5px solid var(--color-border-tertiary);
+      background: linear-gradient(90deg,#f6f4ec 0%,#cbdab6 8%,#78bd78 24%,#249774 44%,#26709a 65%,#384387 84%,#311f4a 100%);
+    }
+    .legend span:last-child { text-align: right; }
+    .side-profile-panel {
+      border-top: 0.5px solid var(--color-border-tertiary);
+      padding-top: 12px;
+      margin-top: 12px;
+    }
+    .canvas-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    #side-view-profile {
+      width: 100%;
+      height: 210px;
+      display: block;
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-primary);
+    }
+    .side { display: grid; gap: 12px; }
+    .card-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 10px;
+    }
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      border-top: 0.5px solid var(--color-border-tertiary);
+      padding: 9px 0;
+      color: var(--color-text-secondary);
+      font-size: 13px;
+    }
+    .stat:first-of-type { border-top: 0; padding-top: 0; }
+    .stat b {
+      color: var(--color-text-primary);
+      font-weight: 500;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .metric {
+      border-top: 0.5px solid var(--color-border-tertiary);
+      padding-top: 8px;
+    }
+    .metric span {
+      display: block;
+      color: var(--color-text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+    .metric b { font-size: 17px; font-weight: 500; color: var(--color-text-primary); }
+    .range-block {
+      display: grid;
+      gap: 8px;
+      border-top: 0.5px solid var(--color-border-tertiary);
+      padding-top: 10px;
+      margin-top: 8px;
+    }
+    .range-pair {
+      display: grid;
+      grid-template-columns: 18px 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+    .range-pair span {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .range-pair input[type="range"] {
+      width: 100%;
+      accent-color: var(--color-accent);
+    }
+    .range-values {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-secondary);
+    }
+    .range-values b { color: var(--color-text-primary); font-weight: 500; }
+    .toggle-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-text-secondary);
+      font-size: 13px;
+      margin-top: 10px;
+    }
+    .toggle-line input { accent-color: var(--color-accent); }
+    .number-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .number-field label {
+      display: block;
+      color: var(--color-text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+    }
+    .number-field input {
+      width: 100%;
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 4px;
+      background: var(--color-background-primary);
+      padding: 6px 7px;
+      color: var(--color-text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .button-grid .small-button { width: 100%; }
+    .pick-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-text-secondary);
+    }
+    .source {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .source code { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-primary); }
+    @media (max-width: 980px) {
+      body { padding: 1.5rem 1rem; }
+      .grid { grid-template-columns: 1fr; }
+      .panel-head { flex-direction: column; }
+      .mn { white-space: normal; }
+      .viewer-wrap { min-height: 420px; height: 58vh; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js",
+        "three/addons/controls/OrbitControls.js": "./vendor/three/OrbitControls.js"
+      }
+    }
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <h1>TLS point cloud explorer</h1>
+  <p class="sub">PACE terrestrial laser scan, browser-ready local LOD assets, and assisted tree measurements.</p>
+
+  <div class="toolbar">
+    <div class="control-row">
+      <label>Tool</label>
+      <div id="tool-buttons" class="buttons">
+        <button class="active" type="button" data-tool="orbit">Orbit</button>
+        <button type="button" data-tool="crop">Crop</button>
+        <button type="button" data-tool="cut">Freeform Cut</button>
+        <button type="button" data-tool="distance">Distance</button>
+      </div>
+    </div>
+    <div class="control-row">
+      <label>LOD</label>
+      <div id="lod-buttons" class="buttons"></div>
+    </div>
+    <div class="control-row">
+      <label>Color</label>
+      <div class="buttons">
+        <button id="segmentation-toggle" type="button">Tree Segmentation</button>
+      </div>
+    </div>
+    <div class="control-row">
+      <label>View</label>
+      <div class="buttons">
+        <button type="button" data-view="top">Top</button>
+        <button type="button" data-view="front">Front</button>
+        <button type="button" data-view="side">Side</button>
+      </div>
+      <button id="reset" class="reset" type="button">Reset</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="pn">
+      <div class="panel-head">
+        <div>
+          <p class="ph">PACE TLS tree cloud</p>
+          <p id="site-meta" class="ps">Reading local viewer assets</p>
+        </div>
+        <span id="tile-label" class="mn">TREE_cloud.las</span>
+      </div>
+      <div class="viewer-wrap">
+        <canvas id="viewer" aria-label="TLS point cloud"></canvas>
+        <canvas id="cut-overlay" aria-hidden="true"></canvas>
+        <div id="status" class="status">Loading manifest...</div>
+      </div>
+      <div class="legend">
+        <span id="legend-min">0 m</span>
+        <div class="ramp"></div>
+        <span id="legend-max">40 m</span>
+      </div>
+      <div class="side-profile-panel">
+        <div class="canvas-title"><span>Side view</span><b id="side-view-label">...</b></div>
+        <canvas id="side-view-profile" aria-label="Side view of TLS point cloud height profile"></canvas>
+      </div>
+    </section>
+
+    <aside class="pn side">
+      <div>
+        <p class="card-title">Cloud</p>
+        <div class="stat"><span>Source</span><b id="source">...</b></div>
+        <div class="stat"><span>Original</span><b id="original-points">...</b></div>
+        <div class="stat"><span>Loaded</span><b id="loaded-points">...</b></div>
+        <div class="stat"><span>Bounds</span><b id="bounds">...</b></div>
+        <div class="stat"><span>Color</span><b id="color-mode">Height</b></div>
+      </div>
+
+      <div>
+        <p class="card-title">Segmentation</p>
+        <div class="metrics">
+          <div class="metric"><span>Visible trees</span><b id="segment-count">...</b></div>
+          <div class="metric"><span>Selected TREE</span><b id="selected-tree-id">...</b></div>
+        </div>
+      </div>
+
+      <div>
+        <p class="card-title">Crop</p>
+        <div class="metrics">
+          <div class="metric"><span>Points</span><b id="crop-count">...</b></div>
+          <div class="metric"><span>Z range</span><b id="crop-z">...</b></div>
+        </div>
+        <div class="range-block">
+          <div class="range-pair"><span>X</span><input id="x-min" type="range"><input id="x-max" type="range"></div>
+          <div class="range-pair"><span>Y</span><input id="y-min" type="range"><input id="y-max" type="range"></div>
+          <div class="range-pair"><span>Z</span><input id="z-min" type="range"><input id="z-max" type="range"></div>
+          <div class="range-values">
+            <span>X <b id="x-range">...</b></span>
+            <span>Y <b id="y-range">...</b></span>
+            <span>Z <b id="z-range">...</b></span>
+          </div>
+          <div class="number-grid">
+            <div class="number-field"><label for="crop-x-min">X min</label><input id="crop-x-min" type="number" step="0.1"></div>
+            <div class="number-field"><label for="crop-x-max">X max</label><input id="crop-x-max" type="number" step="0.1"></div>
+            <div class="number-field"><label for="crop-y-min">Y min</label><input id="crop-y-min" type="number" step="0.1"></div>
+            <div class="number-field"><label for="crop-y-max">Y max</label><input id="crop-y-max" type="number" step="0.1"></div>
+            <div class="number-field"><label for="crop-z-min">Z min</label><input id="crop-z-min" type="number" step="0.1"></div>
+            <div class="number-field"><label for="crop-z-max">Z max</label><input id="crop-z-max" type="number" step="0.1"></div>
+          </div>
+        </div>
+        <label class="toggle-line"><input id="isolate" type="checkbox"> Isolate crop</label>
+      </div>
+
+      <div>
+        <p class="card-title">Freeform Cut</p>
+        <div class="metrics">
+          <div class="metric"><span>View</span><b id="cut-view-label">Top</b></div>
+          <div class="metric"><span>Vertices</span><b id="cut-vertex-count">0</b></div>
+        </div>
+        <div class="metrics" style="margin-top:8px">
+          <div class="metric"><span>Status</span><b id="cut-status">Off</b></div>
+          <div class="metric"><span>Keep</span><b id="cut-keep-label">Inside</b></div>
+        </div>
+        <div class="buttons" style="margin-top:10px">
+          <button type="button" data-cut-view="top">Top</button>
+          <button type="button" data-cut-view="front">Front</button>
+          <button type="button" data-cut-view="side">Side</button>
+        </div>
+        <label class="toggle-line"><input id="apply-cut" type="checkbox"> Apply freeform cut</label>
+        <div class="button-grid">
+          <button id="start-cut-polygon" class="small-button" type="button">Start polygon</button>
+          <button id="undo-cut-vertex" class="small-button" type="button">Undo vertex</button>
+          <button id="apply-cut-polygon" class="small-button" type="button">Apply polygon</button>
+          <button id="clear-cut-polygon" class="small-button" type="button">Clear polygon</button>
+          <button id="invert-cut-polygon" class="small-button" type="button">Invert keep side</button>
+        </div>
+      </div>
+
+      <div>
+        <p class="card-title">Distance</p>
+        <div class="metrics">
+          <div class="metric"><span>3D dist</span><b id="distance-value">...</b></div>
+          <div class="metric"><span>dZ</span><b id="distance-dz">...</b></div>
+        </div>
+        <div class="metrics" style="margin-top:8px">
+          <div class="metric"><span>dXY</span><b id="distance-dxy">...</b></div>
+          <div class="metric"><span>Points</span><b id="distance-count">0/2</b></div>
+        </div>
+        <button id="clear-distance" class="small-button" type="button" style="margin-top:10px">Clear distance</button>
+      </div>
+
+      <p class="source">Serve from the repo root. Assets: <code>data/tls/PACE/viewer</code>.</p>
+    </aside>
+  </div>
+</div>
+
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  if(window.location.protocol !== 'file:') return;
+  const status = document.getElementById('status');
+  if(!status) return;
+  status.hidden = false;
+  status.textContent = 'This viewer must be opened through a local web server, not by double-clicking the HTML file. In the downloaded folder, run start_viewer.py, start_viewer.command, or start_viewer.bat; the launcher will open the correct localhost URL.';
+});
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const MANIFEST_URL = 'data/tls/PACE/viewer/TREE_cloud_manifest.json';
+const AXES = ['x', 'y', 'z'];
+const RAMP = [
+  [0.00, [246, 244, 236]],
+  [0.08, [203, 218, 182]],
+  [0.24, [120, 189, 120]],
+  [0.44, [36, 151, 116]],
+  [0.65, [38, 112, 154]],
+  [0.84, [56, 67, 135]],
+  [1.00, [49, 31, 74]]
+];
+
+const el = id => document.getElementById(id);
+const cssv = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = value => Number.isFinite(value) ? value.toFixed(1) : '...';
+const fmtM = value => Number.isFinite(value) ? `${fmt(value)} m` : '...';
+const fmtCount = value => Number.isFinite(value) ? Math.round(value).toLocaleString('en-US') : '...';
+const fmtCm = value => Number.isFinite(value) ? `${(value * 100).toFixed(1)} cm` : '...';
+
+const state = {
+  manifest: null,
+  manifestBase: null,
+  lodIndex: 0,
+  positions: null,
+  treeIds: null,
+  pointCount: 0,
+  crop: null,
+  tool: 'orbit',
+  isolate: false,
+  colorMode: 'height',
+  selectedTreeId: null,
+  applyCut: false,
+  cutView: 'top',
+  cutDraft: [],
+  cutPolygon: [],
+  cutPolygonView: null,
+  cutInvert: false,
+  cropStats: null,
+  distancePoints: [],
+  distanceMarkers: [],
+  distanceLine: null,
+  statsTimer: null
+};
+
+let scene;
+let camera;
+let renderer;
+let controls;
+let material;
+let pointsObject;
+let cropHelper;
+let gridHelper;
+let cutOverlay;
+let raycaster;
+const mouse = new THREE.Vector2();
+
+function colorForHeight(height, minHeight, maxHeight){
+  const t = Math.max(0, Math.min(1, (height - minHeight) / Math.max(1e-6, maxHeight - minHeight)));
+  for(let i = 0; i < RAMP.length - 1; i++){
+    const a = RAMP[i], b = RAMP[i + 1];
+    if(t >= a[0] && t <= b[0]){
+      const p = (t - a[0]) / (b[0] - a[0]);
+      return [
+        Math.round(a[1][0] + (b[1][0] - a[1][0]) * p),
+        Math.round(a[1][1] + (b[1][1] - a[1][1]) * p),
+        Math.round(a[1][2] + (b[1][2] - a[1][2]) * p)
+      ];
+    }
+  }
+  return RAMP[RAMP.length - 1][1];
+}
+
+function segmentColorForId(treeId){
+  if(treeId < 0) return [150, 150, 145];
+  const h = Math.abs(Math.sin((treeId + 1) * 12.9898) * 43758.5453) % 1;
+  const s = 0.62;
+  const l = 0.50;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue = [h + 1 / 3, h, h - 1 / 3].map(v => {
+    let t = v;
+    if(t < 0) t += 1;
+    if(t > 1) t -= 1;
+    if(t < 1 / 6) return p + (q - p) * 6 * t;
+    if(t < 1 / 2) return q;
+    if(t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  });
+  return hue.map(v => Math.round(v * 255));
+}
+
+function colorForPoint(z, treeId){
+  if(state.colorMode === 'segmentation' && Number.isFinite(treeId)){
+    return segmentColorForId(treeId);
+  }
+  return colorForHeight(z, state.manifest.bounds.min[2], state.manifest.bounds.max[2]);
+}
+
+function setupCanvas2d(canvas){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+  if(canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)){
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  return {ctx, width, height};
+}
+
+function initThree(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(cssv('--color-background-primary') || '#ffffff');
+
+  const canvas = el('viewer');
+  cutOverlay = el('cut-overlay');
+  renderer = new THREE.WebGLRenderer({canvas, antialias: false, powerPreference: 'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.localClippingEnabled = true;
+
+  camera = new THREE.PerspectiveCamera(45, 1, 0.05, 1000);
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.screenSpacePanning = true;
+  raycaster = new THREE.Raycaster();
+  raycaster.params.Points.threshold = 0.35;
+  renderer.domElement.addEventListener('pointerdown', onViewerPointerDown);
+
+  const light = new THREE.HemisphereLight(0xffffff, 0x888877, 1.4);
+  scene.add(light);
+
+  material = new THREE.ShaderMaterial({
+    uniforms: {
+      centerZ: {value: 0},
+      minHeight: {value: 0},
+      maxHeight: {value: 40},
+      pointScale: {value: 1.6},
+      colorMode: {value: 0},
+      selectedTreeId: {value: -99999},
+      cutEnabled: {value: 0},
+      cutView: {value: 0},
+      cutInvert: {value: 0},
+      cutVertexCount: {value: 0},
+      cutMin: {value: new THREE.Vector3()},
+      cutMax: {value: new THREE.Vector3()},
+      cutPolygon: {value: Array.from({length: 16}, () => new THREE.Vector2())}
+    },
+    vertexShader: `
+      uniform float centerZ;
+      uniform float pointScale;
+      attribute float treeId;
+      varying float vHeight;
+      varying float vTreeId;
+      varying vec3 vPosition;
+      #include <clipping_planes_pars_vertex>
+      void main() {
+        vHeight = position.z + centerZ;
+        vTreeId = treeId;
+        vPosition = position;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = max(1.0, pointScale * (130.0 / max(8.0, -mvPosition.z)));
+        #include <clipping_planes_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform float minHeight;
+      uniform float maxHeight;
+      uniform float colorMode;
+      uniform float selectedTreeId;
+      uniform float cutEnabled;
+      uniform float cutView;
+      uniform float cutInvert;
+      uniform float cutVertexCount;
+      uniform vec3 cutMin;
+      uniform vec3 cutMax;
+      uniform vec2 cutPolygon[16];
+      varying float vHeight;
+      varying float vTreeId;
+      varying vec3 vPosition;
+      #include <clipping_planes_pars_fragment>
+      vec3 ramp(float t) {
+        vec3 c0 = vec3(246.0, 244.0, 236.0) / 255.0;
+        vec3 c1 = vec3(203.0, 218.0, 182.0) / 255.0;
+        vec3 c2 = vec3(120.0, 189.0, 120.0) / 255.0;
+        vec3 c3 = vec3(36.0, 151.0, 116.0) / 255.0;
+        vec3 c4 = vec3(38.0, 112.0, 154.0) / 255.0;
+        vec3 c5 = vec3(56.0, 67.0, 135.0) / 255.0;
+        vec3 c6 = vec3(49.0, 31.0, 74.0) / 255.0;
+        if(t < 0.08) return mix(c0, c1, t / 0.08);
+        if(t < 0.24) return mix(c1, c2, (t - 0.08) / 0.16);
+        if(t < 0.44) return mix(c2, c3, (t - 0.24) / 0.20);
+        if(t < 0.65) return mix(c3, c4, (t - 0.44) / 0.21);
+        if(t < 0.84) return mix(c4, c5, (t - 0.65) / 0.19);
+        return mix(c5, c6, (t - 0.84) / 0.16);
+      }
+      vec3 segmentColor(float sid) {
+        if(sid < -0.5) return vec3(0.59, 0.59, 0.56);
+        float h = fract(sin((sid + 1.0) * 12.9898) * 43758.5453);
+        float r = 0.45 + 0.45 * sin(6.28318 * (h + 0.00));
+        float g = 0.45 + 0.45 * sin(6.28318 * (h + 0.33));
+        float b = 0.45 + 0.45 * sin(6.28318 * (h + 0.67));
+        return clamp(vec3(r, g, b), 0.12, 0.95);
+      }
+      bool cutPointInside(vec2 p) {
+        bool inside = false;
+        int count = int(cutVertexCount + 0.5);
+        for(int i = 0; i < 16; i++) {
+          if(i >= count) break;
+          int j = i == 0 ? count - 1 : i - 1;
+          vec2 a = cutPolygon[i];
+          vec2 b = cutPolygon[j];
+          bool crosses = ((a.y > p.y) != (b.y > p.y));
+          if(crosses) {
+            float x = (b.x - a.x) * (p.y - a.y) / max(0.000001, b.y - a.y) + a.x;
+            if(p.x < x) inside = !inside;
+          }
+        }
+        return inside;
+      }
+      void main() {
+        #include <clipping_planes_fragment>
+        vec2 uv = gl_PointCoord - vec2(0.5);
+        if(dot(uv, uv) > 0.25) discard;
+        if(cutEnabled > 0.5) {
+          bool inBox = vPosition.x >= cutMin.x && vPosition.x <= cutMax.x &&
+            vPosition.y >= cutMin.y && vPosition.y <= cutMax.y &&
+            vPosition.z >= cutMin.z && vPosition.z <= cutMax.z;
+          vec2 cutPoint = cutView < 0.5 ? vPosition.xy : (cutView < 1.5 ? vPosition.xz : vPosition.yz);
+          bool inPoly = cutPointInside(cutPoint);
+          bool keep = inBox && (cutInvert > 0.5 ? !inPoly : inPoly);
+          if(!keep) discard;
+        }
+        float t = clamp((vHeight - minHeight) / max(0.001, maxHeight - minHeight), 0.0, 1.0);
+        vec3 color = colorMode > 0.5 ? segmentColor(vTreeId) : ramp(t);
+        if(selectedTreeId > -99998.0 && abs(vTreeId - selectedTreeId) < 0.5) {
+          color = mix(color, vec3(1.0, 0.82, 0.18), 0.45);
+        }
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    clipping: true
+  });
+
+  window.addEventListener('resize', onResize);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    scene.background = new THREE.Color(cssv('--color-background-primary') || '#ffffff');
+    drawAll2d();
+  });
+  onResize();
+  animate();
+}
+
+function onResize(){
+  const wrap = el('viewer').parentElement.getBoundingClientRect();
+  renderer.setSize(Math.max(1, wrap.width), Math.max(1, wrap.height), false);
+  camera.aspect = Math.max(1, wrap.width) / Math.max(1, wrap.height);
+  camera.updateProjectionMatrix();
+  drawCutOverlay();
+  drawAll2d();
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  drawCutOverlay();
+}
+
+async function loadManifest(){
+  const response = await fetch(MANIFEST_URL);
+  if(!response.ok){
+    throw new Error(`Missing ${MANIFEST_URL}. Keep the data/tls/PACE/viewer folder next to this HTML file and open the viewer through start_viewer.py or a local HTTP server.`);
+  }
+  state.manifest = await response.json();
+  state.manifestBase = new URL(MANIFEST_URL, window.location.href);
+  material.uniforms.centerZ.value = state.manifest.center[2];
+  material.uniforms.minHeight.value = state.manifest.bounds.min[2];
+  material.uniforms.maxHeight.value = state.manifest.bounds.max[2];
+  el('legend-min').textContent = fmtM(state.manifest.bounds.min[2]);
+  el('legend-max').textContent = fmtM(state.manifest.bounds.max[2]);
+  initCrop();
+  buildLodButtons();
+  updateCloudLabels();
+  await loadLod(0);
+}
+
+function buildLodButtons(){
+  const box = el('lod-buttons');
+  box.innerHTML = '';
+  state.manifest.lods.forEach((lod, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = lod.label;
+    button.dataset.lod = String(index);
+    if(index === state.lodIndex) button.classList.add('active');
+    button.addEventListener('click', () => loadLod(index));
+    box.appendChild(button);
+  });
+}
+
+function typedTreeIds(buffer, type){
+  if(type === 'int16') return new Int16Array(buffer);
+  if(type === 'int32') return new Int32Array(buffer);
+  if(type === 'uint16') return new Uint16Array(buffer);
+  if(type === 'uint32') return new Uint32Array(buffer);
+  throw new Error(`Unsupported TREE sidecar type: ${type}`);
+}
+
+async function loadLod(index){
+  state.lodIndex = index;
+  document.querySelectorAll('#lod-buttons button').forEach(button => {
+    button.classList.toggle('active', Number(button.dataset.lod) === index);
+  });
+  const lod = state.manifest.lods[index];
+  showStatus(`Loading ${lod.label} (${fmtCount(lod.points)} points)...`);
+  const xyzUrl = new URL(lod.xyz, state.manifestBase);
+  const treeUrl = new URL(lod.treeId, state.manifestBase);
+  const [xyzResponse, treeResponse] = await Promise.all([fetch(xyzUrl), fetch(treeUrl)]);
+  if(!xyzResponse.ok) throw new Error(`Could not load ${xyzUrl.pathname}`);
+  if(!treeResponse.ok) throw new Error(`Could not load ${treeUrl.pathname}`);
+  const [xyzBuffer, treeBuffer] = await Promise.all([xyzResponse.arrayBuffer(), treeResponse.arrayBuffer()]);
+  state.positions = new Float32Array(xyzBuffer);
+  state.pointCount = state.positions.length / 3;
+  state.treeIds = typedTreeIds(treeBuffer, lod.treeIdType);
+  if(state.treeIds.length !== state.pointCount){
+    throw new Error(`TREE length ${state.treeIds.length} does not match point count ${state.pointCount}`);
+  }
+
+  if(pointsObject){
+    scene.remove(pointsObject);
+    pointsObject.geometry.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(state.positions, 3));
+  geometry.setAttribute('treeId', new THREE.BufferAttribute(new Float32Array(state.treeIds), 1));
+  geometry.computeBoundingSphere();
+  pointsObject = new THREE.Points(geometry, material);
+  scene.add(pointsObject);
+
+  clearDistance(false);
+  state.selectedTreeId = null;
+  material.uniforms.selectedTreeId.value = -99999;
+  updateCloudLabels();
+  updateCropHelper();
+  updateClipPlanes();
+  frameCloud('iso');
+  scheduleCropStats(true);
+  hideStatus();
+}
+
+function initCrop(){
+  const b = state.manifest.bounds;
+  resetCropToBounds(false);
+  for(const axis of AXES){
+    for(const side of ['min', 'max']){
+      const input = el(`${axis}-${side}`);
+      input.min = String(b.min[AXES.indexOf(axis)]);
+      input.max = String(b.max[AXES.indexOf(axis)]);
+      input.step = axis === 'z' ? '0.05' : '0.1';
+      const onCropEdit = () => {
+        syncCropFromInputs(`${axis}${side}`);
+        updateCropHelper();
+        updateClipPlanes();
+        scheduleCropStats(true);
+      };
+      input.addEventListener('input', onCropEdit);
+      input.addEventListener('change', onCropEdit);
+
+      const number = el(`crop-${axis}-${side}`);
+      number.min = input.min;
+      number.max = input.max;
+      number.step = input.step;
+      const onCropNumberEdit = () => {
+        syncCropFromNumberInputs(`${axis}${side}`);
+        updateCropHelper();
+        updateClipPlanes();
+        scheduleCropStats(true);
+      };
+      number.addEventListener('input', onCropNumberEdit);
+      number.addEventListener('change', onCropNumberEdit);
+    }
+  }
+  updateCropInputs();
+}
+
+function resetCropToBounds(update = true){
+  const b = state.manifest.bounds;
+  state.crop = {
+    xMin: b.min[0], xMax: b.max[0],
+    yMin: b.min[1], yMax: b.max[1],
+    zMin: b.min[2], zMax: b.max[2]
+  };
+  if(update) updateCropInputs();
+}
+
+function syncCropFromInputs(changed){
+  for(const axis of AXES){
+    state.crop[`${axis}Min`] = Number(el(`${axis}-min`).value);
+    state.crop[`${axis}Max`] = Number(el(`${axis}-max`).value);
+    if(state.crop[`${axis}Min`] > state.crop[`${axis}Max`]){
+      if(changed === `${axis}min`) state.crop[`${axis}Max`] = state.crop[`${axis}Min`];
+      else state.crop[`${axis}Min`] = state.crop[`${axis}Max`];
+    }
+  }
+  updateCropInputs();
+}
+
+function syncCropFromNumberInputs(changed){
+  for(const axis of AXES){
+    const minValue = Number(el(`crop-${axis}-min`).value);
+    const maxValue = Number(el(`crop-${axis}-max`).value);
+    if(Number.isFinite(minValue)) state.crop[`${axis}Min`] = minValue;
+    if(Number.isFinite(maxValue)) state.crop[`${axis}Max`] = maxValue;
+    if(state.crop[`${axis}Min`] > state.crop[`${axis}Max`]){
+      if(changed === `${axis}min`) state.crop[`${axis}Max`] = state.crop[`${axis}Min`];
+      else state.crop[`${axis}Min`] = state.crop[`${axis}Max`];
+    }
+  }
+  updateCropInputs();
+}
+
+function updateCropInputs(){
+  for(const axis of AXES){
+    el(`${axis}-min`).value = String(state.crop[`${axis}Min`]);
+    el(`${axis}-max`).value = String(state.crop[`${axis}Max`]);
+    el(`crop-${axis}-min`).value = state.crop[`${axis}Min`].toFixed(2);
+    el(`crop-${axis}-max`).value = state.crop[`${axis}Max`].toFixed(2);
+    el(`${axis}-range`).textContent = `${fmt(state.crop[`${axis}Min`])} to ${fmt(state.crop[`${axis}Max`])}`;
+  }
+}
+
+function updateCropHelper(){
+  if(!state.manifest || !state.crop) return;
+  if(cropHelper) scene.remove(cropHelper);
+  const c = state.manifest.center;
+  const box = new THREE.Box3(
+    new THREE.Vector3(state.crop.xMin - c[0], state.crop.yMin - c[1], state.crop.zMin - c[2]),
+    new THREE.Vector3(state.crop.xMax - c[0], state.crop.yMax - c[1], state.crop.zMax - c[2])
+  );
+  cropHelper = new THREE.Box3Helper(box, new THREE.Color(cssv('--color-warm') || '#EF9F27'));
+  cropHelper.visible = state.tool !== 'orbit' || state.isolate;
+  scene.add(cropHelper);
+}
+
+function cutViewCode(view){
+  return view === 'front' ? 1 : (view === 'side' ? 2 : 0);
+}
+
+function activeCutPolygon(){
+  return state.cutDraft.length ? state.cutDraft : state.cutPolygon;
+}
+
+function activeCutView(){
+  return state.cutDraft.length ? state.cutView : (state.cutPolygonView || state.cutView);
+}
+
+function startCutPolygon(){
+  state.cutDraft = [];
+  state.cutPolygon = [];
+  state.cutPolygonView = null;
+  state.applyCut = false;
+  el('apply-cut').checked = false;
+  setTool('cut');
+  frameCloud(state.cutView);
+  updateCutLabels();
+  updateClipPlanes();
+  scheduleCropStats(true);
+}
+
+function undoCutVertex(){
+  state.cutDraft.pop();
+  updateCutLabels();
+  updateCutUniforms();
+  drawCutOverlay();
+}
+
+function applyCutPolygon(){
+  if(state.cutDraft.length < 3) return;
+  state.cutPolygon = state.cutDraft.map(point => ({...point}));
+  state.cutPolygonView = state.cutView;
+  state.cutDraft = [];
+  state.applyCut = true;
+  el('apply-cut').checked = true;
+  updateCutLabels();
+  updateClipPlanes();
+  scheduleCropStats(true);
+}
+
+function clearCutPolygon(){
+  state.cutDraft = [];
+  state.cutPolygon = [];
+  state.cutPolygonView = null;
+  state.applyCut = false;
+  el('apply-cut').checked = false;
+  updateCutLabels();
+  updateClipPlanes();
+  scheduleCropStats(true);
+}
+
+function invertCutPolygon(){
+  state.cutInvert = !state.cutInvert;
+  updateCutLabels();
+  updateCutUniforms();
+  scheduleCropStats(true);
+}
+
+function setCutView(view){
+  state.cutView = view;
+  document.querySelectorAll('[data-cut-view]').forEach(button => {
+    button.classList.toggle('active', button.dataset.cutView === view);
+  });
+  setTool('cut');
+  frameCloud(view);
+  updateCutLabels();
+  drawCutOverlay();
+}
+
+function updateCutLabels(){
+  el('cut-view-label').textContent = state.cutView[0].toUpperCase() + state.cutView.slice(1);
+  el('cut-vertex-count').textContent = String(activeCutPolygon().length);
+  el('cut-status').textContent = state.cutDraft.length ? 'Draft' : (state.applyCut && state.cutPolygon.length >= 3 ? 'On' : 'Off');
+  el('cut-keep-label').textContent = state.cutInvert ? 'Outside' : 'Inside';
+  el('apply-cut-polygon').disabled = state.cutDraft.length < 3;
+  el('undo-cut-vertex').disabled = state.cutDraft.length === 0;
+  el('apply-cut').disabled = state.cutPolygon.length < 3;
+  document.querySelectorAll('[data-cut-view]').forEach(button => {
+    button.classList.toggle('active', button.dataset.cutView === state.cutView);
+  });
+}
+
+function updateCutUniforms(){
+  if(!material || !state.manifest || !state.crop) return;
+  const c = state.manifest.center;
+  const polygon = state.applyCut && state.cutPolygon.length >= 3 ? state.cutPolygon : [];
+  const polygonView = state.cutPolygonView || state.cutView;
+  material.uniforms.cutEnabled.value = polygon.length >= 3 ? 1 : 0;
+  material.uniforms.cutView.value = cutViewCode(polygonView);
+  material.uniforms.cutInvert.value = state.cutInvert ? 1 : 0;
+  material.uniforms.cutVertexCount.value = Math.min(16, polygon.length);
+  material.uniforms.cutMin.value.set(state.crop.xMin - c[0], state.crop.yMin - c[1], state.crop.zMin - c[2]);
+  material.uniforms.cutMax.value.set(state.crop.xMax - c[0], state.crop.yMax - c[1], state.crop.zMax - c[2]);
+  for(let i = 0; i < 16; i++){
+    const point = polygon[i];
+    const target = material.uniforms.cutPolygon.value[i];
+    if(!point){
+      target.set(0, 0);
+    } else if(polygonView === 'top'){
+      target.set(point.x - c[0], point.y - c[1]);
+    } else if(polygonView === 'front'){
+      target.set(point.x - c[0], point.z - c[2]);
+    } else {
+      target.set(point.y - c[1], point.z - c[2]);
+    }
+  }
+  material.needsUpdate = true;
+}
+
+function updateClipPlanes(){
+  if(!state.manifest || !material) return;
+  const planes = [];
+  const c = state.manifest.center;
+  if(state.isolate){
+    const xmin = state.crop.xMin - c[0], xmax = state.crop.xMax - c[0];
+    const ymin = state.crop.yMin - c[1], ymax = state.crop.yMax - c[1];
+    const zmin = state.crop.zMin - c[2], zmax = state.crop.zMax - c[2];
+    planes.push(
+      new THREE.Plane(new THREE.Vector3(1, 0, 0), -xmin),
+      new THREE.Plane(new THREE.Vector3(-1, 0, 0), xmax),
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), -ymin),
+      new THREE.Plane(new THREE.Vector3(0, -1, 0), ymax),
+      new THREE.Plane(new THREE.Vector3(0, 0, 1), -zmin),
+      new THREE.Plane(new THREE.Vector3(0, 0, -1), zmax)
+    );
+  }
+  material.clippingPlanes = planes;
+  material.needsUpdate = true;
+  updateCutLabels();
+  updateCutUniforms();
+  drawCutOverlay();
+}
+
+function scheduleCropStats(resetLine){
+  clearTimeout(state.statsTimer);
+  state.statsTimer = setTimeout(() => computeCropStats(resetLine), 80);
+}
+
+function computeCropStats(resetLine){
+  if(!state.positions || !state.crop) return;
+  const pos = state.positions;
+  const c = state.manifest.center;
+  const zSample = [];
+  const segments = new Set();
+  let count = 0;
+  const sampleEvery = Math.max(1, Math.ceil(state.pointCount / 250000));
+  for(let i = 0, j = 0; i < state.pointCount; i++, j += 3){
+    const x = pos[j] + c[0], y = pos[j + 1] + c[1], z = pos[j + 2] + c[2];
+    if(pointInAnalysis(x, y, z)){
+      count++;
+      if(state.treeIds && state.treeIds[i] >= 0) segments.add(state.treeIds[i]);
+      if((count - 1) % sampleEvery === 0) zSample.push(z);
+    }
+  }
+  zSample.sort((a, b) => a - b);
+  const p = q => zSample.length ? zSample[Math.min(zSample.length - 1, Math.max(0, Math.floor(q * (zSample.length - 1))))] : NaN;
+  state.cropStats = {
+    count,
+    zMin: p(0),
+    zP01: p(0.01),
+    zP995: p(0.995),
+    zMax: p(1),
+    segments: segments.size
+  };
+  updateMeasureLabels();
+  drawAll2d();
+}
+
+function updateCloudLabels(){
+  if(!state.manifest) return;
+  const lod = state.manifest.lods[state.lodIndex] || {};
+  el('site-meta').textContent = `${lod.label || 'LOD'} local point asset`;
+  el('source').textContent = state.manifest.source.split('/').slice(-1)[0];
+  el('original-points').textContent = fmtCount(state.manifest.originalPointCount);
+  el('loaded-points').textContent = state.pointCount ? `${fmtCount(state.pointCount)} (${lod.label})` : '...';
+  const b = state.manifest.bounds;
+  el('bounds').textContent = `${fmt(b.max[0] - b.min[0])} x ${fmt(b.max[1] - b.min[1])} x ${fmt(b.max[2] - b.min[2])} m`;
+  el('color-mode').textContent = state.colorMode === 'segmentation' ? 'TREE' : 'Height';
+}
+
+function distanceMeasurement(){
+  if(state.distancePoints.length !== 2) return null;
+  const [a, b] = state.distancePoints;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  return {
+    dx,
+    dy,
+    dz,
+    dxy: Math.hypot(dx, dy),
+    dist: Math.hypot(dx, dy, dz)
+  };
+}
+
+function updateMeasureLabels(){
+  const stats = state.cropStats;
+  el('crop-count').textContent = stats ? fmtCount(stats.count) : '...';
+  el('crop-z').textContent = stats && Number.isFinite(stats.zMin) ? `${fmt(stats.zMin)} to ${fmt(stats.zMax)} m` : '...';
+  el('segment-count').textContent = stats ? fmtCount(stats.segments) : '...';
+  el('selected-tree-id').textContent = state.selectedTreeId == null ? '...' : String(state.selectedTreeId);
+  const distance = distanceMeasurement();
+  el('distance-value').textContent = distance ? fmtM(distance.dist) : '...';
+  el('distance-dz').textContent = distance ? fmtM(distance.dz) : '...';
+  el('distance-dxy').textContent = distance ? fmtM(distance.dxy) : '...';
+  el('distance-count').textContent = `${state.distancePoints.length}/2`;
+}
+
+function pointInCrop(x, y, z){
+  return x >= state.crop.xMin && x <= state.crop.xMax &&
+    y >= state.crop.yMin && y <= state.crop.yMax &&
+    z >= state.crop.zMin && z <= state.crop.zMax;
+}
+
+function cutPair(point, view){
+  if(view === 'front') return {a: point.x, b: point.z};
+  if(view === 'side') return {a: point.y, b: point.z};
+  return {a: point.x, b: point.y};
+}
+
+function pointInPolygon2d(point, polygon, view){
+  if(polygon.length < 3) return true;
+  const p = cutPair(point, view);
+  let inside = false;
+  for(let i = 0, j = polygon.length - 1; i < polygon.length; j = i++){
+    const a = cutPair(polygon[i], view);
+    const b = cutPair(polygon[j], view);
+    const crosses = (a.b > p.b) !== (b.b > p.b);
+    if(crosses){
+      const x = (b.a - a.a) * (p.b - a.b) / Math.max(1e-9, b.b - a.b) + a.a;
+      if(p.a < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointPassesCut(x, y, z){
+  if(!state.applyCut || state.cutPolygon.length < 3) return true;
+  if(!pointInCrop(x, y, z)) return false;
+  const inside = pointInPolygon2d({x, y, z}, state.cutPolygon, state.cutPolygonView || state.cutView);
+  return state.cutInvert ? !inside : inside;
+}
+
+function pointInAnalysis(x, y, z){
+  return pointInCrop(x, y, z) && pointPassesCut(x, y, z);
+}
+
+function pointRendered(x, y, z){
+  if(state.applyCut) return pointPassesCut(x, y, z);
+  return !state.isolate || pointInCrop(x, y, z);
+}
+
+function drawAll2d(){
+  drawCutOverlay();
+  drawSideViewProfile();
+}
+
+function drawSideViewProfile(){
+  const canvas = el('side-view-profile');
+  if(!canvas) return;
+  const {ctx, width, height} = setupCanvas2d(canvas);
+  ctx.fillStyle = cssv('--color-background-primary') || '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  if(!state.positions || !state.crop){
+    el('side-view-label').textContent = '...';
+    return;
+  }
+
+  const margin = {left: 42, right: 14, top: 14, bottom: 30};
+  const plotW = Math.max(1, width - margin.left - margin.right);
+  const plotH = Math.max(1, height - margin.top - margin.bottom);
+  const xMin = state.crop.xMin, xMax = state.crop.xMax;
+  const zMin = state.crop.zMin, zMax = state.crop.zMax;
+  const sx = x => margin.left + (x - xMin) / Math.max(0.001, xMax - xMin) * plotW;
+  const sy = z => margin.top + (1 - (z - zMin) / Math.max(0.001, zMax - zMin)) * plotH;
+  const pos = state.positions;
+  const c = state.manifest.center;
+  const stride = Math.max(1, Math.ceil(state.pointCount / 65000));
+  let drawn = 0;
+
+  for(let i = 0, j = 0; i < state.pointCount; i += stride, j = i * 3){
+    const x = pos[j] + c[0], y = pos[j + 1] + c[1], z = pos[j + 2] + c[2];
+    if(!pointInAnalysis(x, y, z)) continue;
+    const color = colorForPoint(z, state.treeIds ? state.treeIds[i] : NaN);
+    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},0.55)`;
+    ctx.fillRect(sx(x), sy(z), 1.2, 1.2);
+    drawn++;
+  }
+
+  ctx.strokeStyle = cssv('--color-border-secondary') || 'rgba(0,0,0,0.24)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+  ctx.fillStyle = cssv('--color-text-secondary') || '#6b6a63';
+  ctx.font = `11px ${cssv('--font-mono') || 'monospace'}`;
+  ctx.textAlign = 'left';
+  ctx.fillText(`${fmt(xMin)} m`, margin.left, height - 10);
+  ctx.fillText(`${fmt(zMax)} m`, 8, margin.top + 8);
+  ctx.fillText(`${fmt(zMin)} m`, 8, margin.top + plotH);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${fmt(xMax)} m`, margin.left + plotW, height - 10);
+  el('side-view-label').textContent = drawn ? `${fmt(zMax - zMin)} m z span` : 'No visible points';
+}
+
+function relativePoint(point){
+  const c = state.manifest.center;
+  return new THREE.Vector3(point.x - c[0], point.y - c[1], point.z - c[2]);
+}
+
+function markerRadius(){
+  if(!state.manifest) return 0.3;
+  const b = state.manifest.bounds;
+  return Math.max(0.16, Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]) * 0.006);
+}
+
+function addMarker(point, color){
+  const geometry = new THREE.SphereGeometry(markerRadius(), 12, 8);
+  const markerMaterial = new THREE.MeshBasicMaterial({color});
+  const marker = new THREE.Mesh(geometry, markerMaterial);
+  marker.position.copy(relativePoint(point));
+  scene.add(marker);
+  return marker;
+}
+
+function removeSceneObject(object){
+  if(!object) return;
+  scene.remove(object);
+  if(object.geometry) object.geometry.dispose();
+  if(object.material) object.material.dispose();
+}
+
+function clearDistance(update = true){
+  state.distancePoints = [];
+  for(const marker of state.distanceMarkers) removeSceneObject(marker);
+  state.distanceMarkers = [];
+  removeSceneObject(state.distanceLine);
+  state.distanceLine = null;
+  if(update) updateMeasureLabels();
+}
+
+function updateDistanceLine(){
+  removeSceneObject(state.distanceLine);
+  state.distanceLine = null;
+  if(state.distancePoints.length !== 2) return;
+  const geometry = new THREE.BufferGeometry().setFromPoints(state.distancePoints.map(relativePoint));
+  const lineMaterial = new THREE.LineBasicMaterial({color: 0xEF9F27});
+  state.distanceLine = new THREE.Line(geometry, lineMaterial);
+  scene.add(state.distanceLine);
+}
+
+function addDistancePoint(point){
+  if(state.distancePoints.length >= 2) clearDistance(false);
+  state.distancePoints.push(point);
+  state.distanceMarkers.push(addMarker(point, state.distancePoints.length === 1 ? 0xEF9F27 : 0x1D9E75));
+  updateDistanceLine();
+  updateMeasureLabels();
+}
+
+function cutPlaneForView(view){
+  const c = state.manifest.center;
+  if(view === 'front'){
+    const y = (state.crop.yMin + state.crop.yMax) / 2 - c[1];
+    return new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+  }
+  if(view === 'side'){
+    const x = (state.crop.xMin + state.crop.xMax) / 2 - c[0];
+    return new THREE.Plane(new THREE.Vector3(1, 0, 0), -x);
+  }
+  const z = (state.crop.zMin + state.crop.zMax) / 2 - c[2];
+  return new THREE.Plane(new THREE.Vector3(0, 0, 1), -z);
+}
+
+function cutPointFromEvent(event){
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = new THREE.Vector3();
+  if(!raycaster.ray.intersectPlane(cutPlaneForView(state.cutView), hit)) return null;
+  const c = state.manifest.center;
+  const point = {x: hit.x + c[0], y: hit.y + c[1], z: hit.z + c[2]};
+  return pointInCrop(point.x, point.y, point.z) ? point : null;
+}
+
+function addCutVertexFromEvent(event){
+  if(!state.crop || !state.manifest) return;
+  if(state.cutDraft.length >= 16){
+    showStatus('Freeform cut supports up to 16 vertices. Apply or clear this polygon before adding more.');
+    return;
+  }
+  const point = cutPointFromEvent(event);
+  if(!point){
+    showStatus('Click inside the current crop box to add a freeform cut vertex.');
+    return;
+  }
+  hideStatus();
+  if(state.cutDraft.length === 0 && state.cutPolygon.length){
+    state.cutPolygon = [];
+    state.cutPolygonView = null;
+    state.applyCut = false;
+    el('apply-cut').checked = false;
+  }
+  state.cutDraft.push(point);
+  updateCutLabels();
+  updateCutUniforms();
+  drawCutOverlay();
+}
+
+function screenPointForWorld(point){
+  const vector = relativePoint(point).project(camera);
+  const rect = el('viewer').getBoundingClientRect();
+  return {
+    x: (vector.x * 0.5 + 0.5) * rect.width,
+    y: (-vector.y * 0.5 + 0.5) * rect.height
+  };
+}
+
+function drawCutOverlay(){
+  if(!cutOverlay) return;
+  const {ctx, width, height} = setupCanvas2d(cutOverlay);
+  const polygon = activeCutPolygon();
+  if(!polygon.length) return;
+  const points = polygon.map(screenPointForWorld);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#EF9F27';
+  ctx.fillStyle = 'rgba(239,159,39,0.08)';
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if(index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  if(polygon.length >= 3){
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#1D9E75';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  for(const point of points){
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = cssv('--color-text-primary') || '#1a1a18';
+  ctx.font = `12px ${cssv('--font-mono') || 'monospace'}`;
+  ctx.fillText(`${activeCutView()} cut`, 12, Math.min(height - 12, 22));
+}
+
+function pointAtIndex(index){
+  const j = index * 3;
+  const c = state.manifest.center;
+  return {
+    x: state.positions[j] + c[0],
+    y: state.positions[j + 1] + c[1],
+    z: state.positions[j + 2] + c[2],
+    treeId: state.treeIds ? state.treeIds[index] : null,
+    index
+  };
+}
+
+function pickPoint(event){
+  if(!pointsObject || !state.positions) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObject(pointsObject, false);
+  for(const hit of hits.slice(0, 30)){
+    if(hit.index == null) continue;
+    const point = pointAtIndex(hit.index);
+    if(pointRendered(point.x, point.y, point.z)) return point;
+  }
+  return null;
+}
+
+function onViewerPointerDown(event){
+  if(event.button !== 0) return;
+  if(state.tool === 'cut'){
+    event.preventDefault();
+    addCutVertexFromEvent(event);
+    return;
+  }
+  if(state.tool !== 'distance') return;
+  event.preventDefault();
+  const hit = pickPoint(event);
+  if(!hit){
+    showStatus('No visible point found at click. Try zooming in or increasing point density.');
+    return;
+  }
+  hideStatus();
+  state.selectedTreeId = hit.treeId;
+  material.uniforms.selectedTreeId.value = hit.treeId == null ? -99999 : hit.treeId;
+  addDistancePoint(hit);
+  updateMeasureLabels();
+}
+
+function setTool(tool){
+  state.tool = tool;
+  document.querySelectorAll('#tool-buttons button').forEach(button => {
+    button.classList.toggle('active', button.dataset.tool === tool);
+  });
+  if(cropHelper) cropHelper.visible = state.tool !== 'orbit' || state.isolate;
+  controls.enabled = !['distance', 'cut'].includes(tool);
+  renderer.domElement.style.cursor = ['cut', 'distance'].includes(tool) ? 'crosshair' : 'grab';
+  drawCutOverlay();
+}
+
+function frameCloud(view){
+  if(!state.manifest) return;
+  const b = state.manifest.bounds;
+  const spanX = b.max[0] - b.min[0];
+  const spanY = b.max[1] - b.min[1];
+  const spanZ = b.max[2] - b.min[2];
+  const span = Math.max(spanX, spanY, spanZ);
+  controls.target.set(0, 0, 0);
+  if(view === 'top'){
+    camera.position.set(0, 0.01, span * 1.55);
+    camera.up.set(0, 1, 0);
+  } else if(view === 'front'){
+    camera.position.set(0, -span * 1.9, span * 0.25);
+    camera.up.set(0, 0, 1);
+  } else if(view === 'side'){
+    camera.position.set(span * 1.9, 0, span * 0.25);
+    camera.up.set(0, 0, 1);
+  } else {
+    camera.position.set(span * 0.95, -span * 1.45, span * 0.75);
+    camera.up.set(0, 0, 1);
+  }
+  camera.near = Math.max(0.01, span / 1000);
+  camera.far = span * 20;
+  camera.updateProjectionMatrix();
+  controls.update();
+  updateGrid(span);
+  drawCutOverlay();
+}
+
+function updateGrid(span){
+  if(gridHelper) scene.remove(gridHelper);
+  const b = state.manifest.bounds;
+  gridHelper = new THREE.GridHelper(span, 10, 0x9c9a92, 0xd8d5ca);
+  gridHelper.rotation.x = Math.PI / 2;
+  gridHelper.position.z = b.min[2] - state.manifest.center[2];
+  scene.add(gridHelper);
+}
+
+function showStatus(text){
+  el('status').hidden = false;
+  el('status').textContent = text;
+}
+
+function hideStatus(){
+  el('status').hidden = true;
+}
+
+function bindUi(){
+  document.querySelectorAll('#tool-buttons button').forEach(button => {
+    button.addEventListener('click', () => setTool(button.dataset.tool));
+  });
+  document.querySelectorAll('[data-view]').forEach(button => {
+    button.addEventListener('click', () => {
+      if(['top', 'front', 'side'].includes(button.dataset.view)){
+        state.cutView = button.dataset.view;
+        updateCutLabels();
+      }
+      frameCloud(button.dataset.view);
+    });
+  });
+  document.querySelectorAll('[data-cut-view]').forEach(button => {
+    button.addEventListener('click', () => setCutView(button.dataset.cutView));
+  });
+  el('segmentation-toggle').addEventListener('click', () => {
+    state.colorMode = state.colorMode === 'height' ? 'segmentation' : 'height';
+    material.uniforms.colorMode.value = state.colorMode === 'segmentation' ? 1 : 0;
+    el('segmentation-toggle').classList.toggle('active', state.colorMode === 'segmentation');
+    updateCloudLabels();
+    drawAll2d();
+  });
+  el('reset').addEventListener('click', () => {
+    resetCropToBounds();
+    state.isolate = false;
+    el('isolate').checked = false;
+    clearDistance(false);
+    clearCutPolygon();
+    updateCropHelper();
+    updateClipPlanes();
+    frameCloud('iso');
+    scheduleCropStats(true);
+  });
+  el('isolate').addEventListener('change', event => {
+    state.isolate = event.target.checked;
+    updateCropHelper();
+    updateClipPlanes();
+  });
+  el('apply-cut').addEventListener('change', event => {
+    state.applyCut = event.target.checked && state.cutPolygon.length >= 3;
+    el('apply-cut').checked = state.applyCut;
+    updateClipPlanes();
+    scheduleCropStats(true);
+  });
+  el('start-cut-polygon').addEventListener('click', startCutPolygon);
+  el('undo-cut-vertex').addEventListener('click', undoCutVertex);
+  el('apply-cut-polygon').addEventListener('click', applyCutPolygon);
+  el('clear-cut-polygon').addEventListener('click', clearCutPolygon);
+  el('invert-cut-polygon').addEventListener('click', invertCutPolygon);
+  el('clear-distance').addEventListener('click', () => clearDistance(true));
+  updateCutLabels();
+}
+
+async function main(){
+  try {
+    bindUi();
+    initThree();
+    await loadManifest();
+  } catch(error) {
+    console.error(error);
+    showStatus(error.message || String(error));
+  }
+}
+
+main();
+</script>
+</body>
+</html>

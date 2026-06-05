@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiDAR Technology Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+      --color-text-primary: #1a1a18;
+      --color-text-secondary: #6b6a63;
+      --color-border-tertiary: rgba(0,0,0,0.12);
+      --color-border-secondary: rgba(0,0,0,0.24);
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f4f3ef;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-text-primary: #e6e4dc;
+        --color-text-secondary: #9c9a92;
+        --color-border-tertiary: rgba(255,255,255,0.12);
+        --color-border-secondary: rgba(255,255,255,0.24);
+        --color-background-primary: #18181a;
+        --color-background-secondary: #222224;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      padding: 2.5rem 2rem;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 1020px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+    .sub { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 2rem; max-width: 680px; }
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .pn {
+      background: var(--color-background-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-lg);
+      padding: 16px 18px;
+    }
+    .ph { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+    .ps { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 10px; }
+    canvas { display: block; width: 100%; }
+    .mn {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      background: var(--color-background-primary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 4px;
+      padding: 4px 10px;
+      color: var(--color-text-primary);
+    }
+    .mi { font-size: 13px; color: var(--color-text-secondary); }
+    .mi b { color: var(--color-text-primary); font-weight: 500; }
+    .sr { display: flex; align-items: center; gap: 14px; margin: 0 0 20px; }
+    .sr label { font-size: 14px; color: var(--color-text-secondary); white-space: nowrap; }
+    .sr output { font-size: 18px; font-weight: 500; color: var(--color-text-primary); min-width: 60px; text-align: right; }
+    .ci { font-size: 14px; color: var(--color-text-secondary); display: flex; align-items: baseline; gap: 6px; margin-bottom: 5px; }
+    .dk { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .card-title { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+    .legend-row { display: flex; justify-content: center; gap: 22px; margin: 14px 0 20px; flex-wrap: wrap; }
+    .legend-item { font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 7px; }
+    .legend-pip { display: inline-block; width: 20px; height: 3px; border-radius: 2px; }
+    input[type="range"] { flex: 1; accent-color: var(--color-text-primary); }
+    .amb-banner {
+      display: none;
+      margin-top: 8px;
+      padding: 7px 12px;
+      background: rgba(239,159,39,0.12);
+      border: 0.5px solid rgba(239,159,39,0.4);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #7A4C08;
+    }
+    @media (prefers-color-scheme: dark) {
+      .amb-banner { color: #EF9F27; }
+    }
+    .tof-banner {
+      display: none;
+      margin-top: 8px;
+      padding: 7px 12px;
+      background: rgba(232,93,36,0.1);
+      border: 0.5px solid rgba(232,93,36,0.4);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #7A2A08;
+    }
+    @media (prefers-color-scheme: dark) {
+      .tof-banner { color: #E85D24; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LiDAR technology comparison</h1>
+  <p class="sub">Time-of-Flight vs Phase-Shift — slide to <strong>1 cm</strong> to see ToF's blind zone, or past <strong>100 m</strong> to see the phase-shift ambiguity where the received wave snaps back into alignment with the emitted wave.</p>
+
+  <div class="sr">
+    <label for="dst">Target distance</label>
+    <input type="range" id="dst" min="-2" max="2.176" step="0.005" value="1.602" list="slider-marks">
+    <datalist id="slider-marks">
+      <option value="-2" label="1 cm">
+      <option value="0" label="1 m">
+      <option value="2" label="100 m">
+    </datalist>
+    <output id="dlbl">40 m</output>
+  </div>
+
+  <div class="g2">
+    <div class="pn">
+      <p class="ph">Time-of-Flight (ToF)</p>
+      <p class="ps">Short pulse — measures round-trip time Δt</p>
+      <canvas id="cs" height="200"></canvas>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <span class="mn">d = c · Δt / 2</span>
+        <span class="mi">Δt = <b id="tv">267 ns</b></span>
+      </div>
+      <div id="tof-banner" class="tof-banner">
+        ⚠ Round-trip time (<b id="tof-tau">—</b>) &lt; typical pulse width (1 ns) — target inside the <b>blind zone</b>
+      </div>
+    </div>
+    <div class="pn">
+      <p class="ph">Phase-Shift (AMCW)</p>
+      <p class="ps">Modulated CW laser — measures phase offset φ</p>
+      <canvas id="cp" height="200"></canvas>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <span class="mn">d = φ · c / (4πf)</span>
+        <span class="mi">φ = <b id="pv">152°</b></span>
+      </div>
+      <div id="amb-banner" class="amb-banner">
+        ⚠ Phase wraps — system reads <b id="amb-reads">—</b> instead of <b id="amb-true">—</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-top:16px">
+    <div class="pn">
+      <p style="font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0 0 8px">Pulse timing diagram</p>
+      <canvas id="cw" height="130"></canvas>
+    </div>
+    <div class="pn">
+      <p style="font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0 0 8px">Wave phase measurement</p>
+      <canvas id="cx" height="130"></canvas>
+    </div>
+  </div>
+
+  <div class="legend-row">
+    <span class="legend-item"><span class="legend-pip" style="background:#E85D24"></span>ToF pulse</span>
+    <span class="legend-item"><span class="legend-pip" style="background:#EF9F27"></span>Emitted wave</span>
+    <span class="legend-item"><span class="legend-pip" style="background:#1D9E75"></span>Received wave</span>
+  </div>
+
+  <div class="g2">
+    <div class="pn">
+      <p class="card-title">Time-of-Flight</p>
+      <div class="ci"><span class="dk" style="background:#E85D24"></span>Range: up to 300m+ outdoor</div>
+      <div class="ci"><span class="dk" style="background:#E85D24"></span>Precision: ~1–5 cm (timer-limited)</div>
+      <div class="ci"><span class="dk" style="background:#E85D24"></span>Simple hardware — just one fast timer</div>
+      <div class="ci"><span class="dk" style="background:#E85D24"></span>Used in: autonomous vehicles, SLAM</div>
+    </div>
+    <div class="pn">
+      <p class="card-title">Phase-Shift</p>
+      <div class="ci"><span class="dk" style="background:#1D9E75"></span>Unambiguous range: 100 m at 1.5 MHz</div>
+      <div class="ci"><span class="dk" style="background:#1D9E75"></span>Precision: sub-mm to ~1mm</div>
+      <div class="ci"><span class="dk" style="background:#1D9E75"></span>Multi-frequency resolves ambiguity</div>
+      <div class="ci"><span class="dk" style="background:#1D9E75"></span>Used in: 3D scanning, BIM, metrology</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CC=3e8,FMOD=1.5e6,LAM=CC/FMOD;  // f=1.5 MHz → λ=200 m → R_max=100 m
+const CTOF='#E85D24',CEMIT='#EF9F27',CRECV='#1D9E75',CBEAM='#378ADD';
+let dist=40,animT=0,lastTs=null,pulseX=60,pulseDir=1;
+
+const el=n=>document.getElementById(n);
+function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||''}
+function tcol(){return cssv('--color-text-primary')||'#1a1a18'}
+function scol(){return cssv('--color-text-secondary')||'#6b6a63'}
+function bcol(){return cssv('--color-border-secondary')||'rgba(0,0,0,0.24)'}
+function isDk(){return matchMedia('(prefers-color-scheme:dark)').matches}
+function sfont(sz,S){return Math.round(sz*(S||1))+"px 'Manrope',-apple-system,BlinkMacSystemFont,sans-serif"}
+function mfont(sz,S){return Math.round(sz*(S||1))+"px 'JetBrains Mono','Fira Code',monospace"}
+
+function fmtDist(d){
+  if(d<0.1)return (d*100).toFixed(1)+' cm';
+  if(d<1)return Math.round(d*100)+' cm';
+  if(d<10)return d.toFixed(1)+' m';
+  return Math.round(d)+' m';
+}
+function fmtNs(ns){
+  if(ns<0.01)return ns.toFixed(4)+' ns';
+  if(ns<0.1)return ns.toFixed(3)+' ns';
+  if(ns<1)return ns.toFixed(2)+' ns';
+  if(ns<10)return ns.toFixed(1)+' ns';
+  return Math.round(ns)+' ns';
+}
+
+function gctx(id){
+  const c=el(id),dpr=devicePixelRatio||1;
+  const W=c.clientWidth||460,H=c.clientHeight;
+  if(c.width!==Math.round(W*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+  const ctx=c.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  return{ctx,W,H};
+}
+
+function getS(W){return Math.min(Math.max(W/265,1),2.8)}
+
+function tpx(W,d,S){
+  const lm=Math.round((6+22+6+10)*S);
+  const rm=Math.round(35*S);
+  const space=W-lm-rm-Math.round(12*S);
+  const frac=(Math.log10(Math.max(d,0.005))+2)/(Math.log10(150)+2);
+  return Math.round(lm+frac*space);
+}
+
+function drawBase(ctx,W,H,d){
+  const S=getS(W),dk=isDk();
+  const OY=Math.round(38*S),OH=Math.round(50*S),MY=OY+OH/2;
+  const SW=Math.round(22*S),LR=Math.round(6*S),LX=6+SW+LR;
+  const TX=tpx(W,d,S),TW=Math.round(12*S);
+  const GY=OY+OH+Math.round(7*S);
+
+  ctx.save();
+  ctx.strokeStyle=dk?'rgba(255,255,255,0.1)':'rgba(0,0,0,0.09)';
+  ctx.lineWidth=0.5;ctx.setLineDash([3,4]);
+  ctx.beginPath();ctx.moveTo(6,GY);ctx.lineTo(W-6,GY);ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle=dk?'rgba(55,138,221,0.14)':'rgba(55,138,221,0.11)';
+  ctx.lineWidth=0.5;ctx.setLineDash([2,3]);
+  ctx.beginPath();ctx.moveTo(LX,MY);ctx.lineTo(TX,MY);ctx.stroke();
+  ctx.restore();
+
+  const sc=dk?'rgba(200,198,186,0.78)':'rgba(58,56,50,0.82)';
+  ctx.fillStyle=sc;ctx.fillRect(6,OY,SW,OH);
+  ctx.strokeStyle=sc;ctx.lineWidth=0.5;ctx.strokeRect(6,OY,SW,OH);
+  ctx.beginPath();ctx.arc(LX,MY,LR,0,Math.PI*2);
+  ctx.fillStyle=CBEAM;ctx.globalAlpha=0.88;ctx.fill();ctx.globalAlpha=1;
+  ctx.fillStyle=scol();ctx.font=sfont(9,S);ctx.textAlign='center';
+  ctx.fillText('LIDAR',6+SW/2,GY+Math.round(14*S));
+
+  const tc=dk?'rgba(170,168,154,0.72)':'rgba(78,76,66,0.68)';
+  ctx.fillStyle=tc;ctx.fillRect(TX,OY,TW,OH);
+  ctx.save();
+  ctx.strokeStyle=dk?'rgba(255,255,255,0.13)':'rgba(0,0,0,0.13)';
+  ctx.lineWidth=0.5;
+  for(let y=OY+4;y<OY+OH-2;y+=Math.round(8*S)){ctx.beginPath();ctx.moveTo(TX,y);ctx.lineTo(TX+TW,y+Math.round(4*S));ctx.stroke()}
+  ctx.restore();
+  ctx.strokeStyle=tc;ctx.lineWidth=0.5;ctx.strokeRect(TX,OY,TW,OH);
+  ctx.fillStyle=scol();ctx.font=sfont(9,S);ctx.textAlign='center';
+  ctx.fillText('target',TX+TW/2,GY+Math.round(14*S));
+
+  const AY=OY-Math.round(12*S);
+  ctx.strokeStyle=scol();ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(LX+2,AY);ctx.lineTo(TX-1,AY);ctx.stroke();
+  [[LX+2,1],[TX-1,-1]].forEach(([x,dr])=>{
+    ctx.fillStyle=scol();ctx.beginPath();
+    ctx.moveTo(x,AY);ctx.lineTo(x+dr*Math.round(4*S),AY-Math.round(2.5*S));ctx.lineTo(x+dr*Math.round(4*S),AY+Math.round(2.5*S));ctx.fill();
+  });
+  ctx.fillStyle=scol();ctx.font=sfont(10,S);ctx.textAlign='center';
+  ctx.fillText(fmtDist(d),LX+(TX-LX)/2,AY-Math.round(4*S));
+
+  return{OY,OH,MY,TX,LX,S,TW};
+}
+
+function drawTof(dt){
+  const{ctx,W,H}=gctx('cs');
+  const{MY,TX,LX,S}=drawBase(ctx,W,H,dist);
+  const SX=LX+2,SPD=90*S;
+  pulseX+=pulseDir*dt*SPD/1000;
+  if(pulseDir===1&&pulseX>=TX-6){pulseX=TX-6;pulseDir=-1}
+  if(pulseDir===-1&&pulseX<=SX){pulseX=SX;pulseDir=1}
+
+  const PR=Math.round(11*S);
+  const gr=ctx.createRadialGradient(pulseX,MY,0,pulseX,MY,PR);
+  gr.addColorStop(0,CTOF+'ee');gr.addColorStop(0.45,CTOF+'55');gr.addColorStop(1,CTOF+'00');
+  ctx.beginPath();ctx.arc(pulseX,MY,PR,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
+  ctx.beginPath();ctx.arc(pulseX,MY,Math.round(3.5*S),0,Math.PI*2);ctx.fillStyle=CTOF;ctx.fill();
+  ctx.beginPath();ctx.arc(pulseX,MY,Math.round(1.5*S),0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+
+  ctx.fillStyle=CTOF;ctx.font=sfont(10,S);ctx.textAlign='center';
+  ctx.fillText('\u0394t\u202f=\u202f'+fmtNs(2*dist/CC*1e9),W/2,H-Math.round(7*S));
+}
+
+function drawPhase(t){
+  const{ctx,W,H}=gctx('cp');
+  const{MY,TX,LX,S}=drawBase(ctx,W,H,dist);
+  const SX=LX,BW=TX-SX;
+  if(BW<5)return;
+  const K=4*Math.PI/BW,OM=t/220,AMP=8*S,PHI=(4*Math.PI*dist)/LAM;
+  const OFF=Math.round(6*S),LW=Math.max(1.5,S*1.8);
+
+  ctx.beginPath();ctx.strokeStyle=CEMIT;ctx.lineWidth=LW;ctx.globalAlpha=0.92;
+  for(let x=SX;x<=TX;x++){const y=MY-OFF-AMP*Math.sin(K*(x-SX)-OM);x===SX?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+  ctx.stroke();ctx.globalAlpha=1;
+
+  ctx.beginPath();ctx.strokeStyle=CRECV;ctx.lineWidth=LW;ctx.globalAlpha=0.92;
+  for(let x=TX;x>=SX;x--){const y=MY+OFF+AMP*Math.sin(K*(TX-x)-OM+PHI);x===TX?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+  ctx.stroke();ctx.globalAlpha=1;
+
+  ctx.fillStyle=CRECV;ctx.font=sfont(10,S);ctx.textAlign='center';
+  ctx.fillText('\u03c6\u202f=\u202f'+((PHI*180/Math.PI)%360).toFixed(1)+'\u00b0',W/2,H-Math.round(7*S));
+}
+
+function drawTofWave(){
+  const{ctx,W,H}=gctx('cw');
+  const S=getS(W);
+  const ML=Math.round(30*S),MR=Math.round(12*S),AXY=H-Math.round(20*S),PW=W-ML-MR;
+  const TAU=2*dist/CC*1e9,MXN=Math.max(680,TAU*1.5+120);
+  const AMP=(AXY-Math.round(8*S))*0.84,SIG=Math.round(13*S);
+
+  function px(ns){return ML+ns/MXN*PW}
+  function gauss(ns,c,s,a){return a*Math.exp(-0.5*((ns-c)/s)**2)}
+
+  ctx.strokeStyle=bcol();ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(ML,AXY);ctx.lineTo(W-MR,AXY);ctx.stroke();
+  ctx.fillStyle=scol();ctx.font=sfont(9,S);ctx.textAlign='center';
+  [0,.25,.5,.75,1].forEach(f=>{
+    const x=ML+f*PW;
+    ctx.fillText(Math.round(f*MXN),x,AXY+Math.round(11*S));
+    ctx.strokeStyle=bcol();ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,AXY);ctx.lineTo(x,AXY+Math.round(3*S));ctx.stroke();
+  });
+  ctx.fillStyle=scol();ctx.textAlign='right';
+  ctx.fillText('ns',W-MR,AXY+Math.round(11*S));
+
+  const EC=22,EPX=px(EC),RPX=px(TAU+EC);
+  const LW=Math.max(1.5,S*1.8);
+
+  ctx.beginPath();ctx.strokeStyle=CTOF;ctx.lineWidth=LW;
+  for(let x=ML;x<W-MR;x++){const ns=(x-ML)/PW*MXN,y=AXY-gauss(ns,EC,SIG,AMP);x===ML?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+  ctx.stroke();
+
+  if(RPX<W-MR-6){
+    ctx.beginPath();ctx.strokeStyle=CRECV;ctx.lineWidth=LW;
+    for(let x=ML;x<W-MR;x++){const ns=(x-ML)/PW*MXN,y=AXY-gauss(ns,TAU+EC,SIG,AMP*0.52);x===ML?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+    ctx.stroke();
+
+    if(RPX-EPX>12*S){
+      const BY=AXY-AMP*0.62;
+      ctx.strokeStyle=scol();ctx.lineWidth=0.7;
+      ctx.beginPath();ctx.moveTo(EPX,BY);ctx.lineTo(RPX,BY);ctx.stroke();
+      [[EPX,1],[RPX,-1]].forEach(([x,dr])=>{
+        ctx.fillStyle=scol();ctx.beginPath();
+        ctx.moveTo(x,BY);ctx.lineTo(x+dr*Math.round(4*S),BY-Math.round(2.5*S));ctx.lineTo(x+dr*Math.round(4*S),BY+Math.round(2.5*S));ctx.fill();
+      });
+      ctx.fillStyle=tcol();ctx.font=sfont(10,S);ctx.textAlign='center';
+      ctx.fillText('\u0394t\u202f=\u202f'+fmtNs(TAU),(EPX+RPX)/2,BY-Math.round(5*S));
+    } else {
+      ctx.fillStyle=CTOF;ctx.font=sfont(9,S);ctx.textAlign='center';
+      ctx.fillText('pulses overlap \u2014 blind zone',EPX,AXY-AMP*0.55);
+    }
+  }
+
+  ctx.font=sfont(10,S);ctx.textAlign='center';
+  ctx.fillStyle=CTOF;ctx.fillText('emitted',EPX,Math.round(11*S));
+  if(RPX<W-MR-25*S){ctx.fillStyle=CRECV;ctx.fillText('received',RPX,Math.round(11*S))}
+}
+
+function drawPhaseWave(t){
+  const{ctx,W,H}=gctx('cx');
+  const S=getS(W);
+  const ML=4,MR=4,PW=W-ML-MR,MY=H*0.5,AMP=H*0.31;
+  const NCYC=2.5,CYW=PW/NCYC;
+  const PHI=(4*Math.PI*dist)/LAM,PHID=PHI%(2*Math.PI),PPX=PHID/(2*Math.PI)*CYW;
+  const AN=t/480%(2*Math.PI),LW=Math.max(1.5,S*1.8);
+
+  ctx.fillStyle=isDk()?'rgba(239,159,39,0.1)':'rgba(239,159,39,0.08)';
+  ctx.fillRect(ML,2,PPX,H-4);
+  ctx.save();ctx.setLineDash([3,3]);ctx.lineWidth=0.7;
+  ctx.strokeStyle=isDk()?'rgba(239,159,39,0.42)':'rgba(239,159,39,0.38)';
+  ctx.beginPath();ctx.moveTo(ML+PPX,4);ctx.lineTo(ML+PPX,H-4);ctx.stroke();
+  ctx.restore();
+
+  function wy(x,off){return MY-AMP*Math.sin((x-ML)/CYW*2*Math.PI-AN+off)}
+
+  ctx.beginPath();ctx.strokeStyle=CEMIT;ctx.lineWidth=LW;
+  for(let x=ML;x<=W-MR;x++){const y=wy(x,0);x===ML?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+  ctx.stroke();
+  ctx.beginPath();ctx.strokeStyle=CRECV;ctx.lineWidth=LW;
+  for(let x=ML;x<=W-MR;x++){const y=wy(x,-PHID);x===ML?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+  ctx.stroke();
+
+  const pd=((PHI*180/Math.PI)%360).toFixed(1);
+  ctx.fillStyle=CEMIT;ctx.font=sfont(10,S);ctx.textAlign='center';
+  ctx.fillText('\u03c6\u202f=\u202f'+pd+'\u00b0',PPX>20?ML+PPX/2:ML+PPX+Math.round(24*S),H-Math.round(6*S));
+  ctx.font=sfont(10,S);ctx.textAlign='right';
+  ctx.fillStyle=CEMIT;ctx.fillText('emitted',W-MR-2,Math.round(12*S));
+  ctx.fillStyle=CRECV;ctx.fillText('received',W-MR-2,Math.round(24*S));
+}
+
+function updateLabels(){
+  el('dlbl').textContent=fmtDist(dist);
+  const tau=2*dist/CC*1e9;
+  el('tv').textContent=fmtNs(tau);
+  const RMAX=LAM/2;
+  const phi_wrap=(4*Math.PI*dist/LAM)%(2*Math.PI);
+  el('pv').textContent=(phi_wrap*180/Math.PI).toFixed(1)+'\u00b0';
+
+  const tb=el('tof-banner');
+  if(dist<0.15){
+    el('tof-tau').textContent=fmtNs(tau);
+    tb.style.display='block';
+  }else{tb.style.display='none';}
+
+  const ab=el('amb-banner');
+  if(dist>RMAX){
+    el('amb-reads').textContent=(phi_wrap*LAM/(4*Math.PI)).toFixed(1)+' m';
+    el('amb-true').textContent=fmtDist(dist);
+    ab.style.display='block';
+  }else{ab.style.display='none';}
+}
+
+function animate(ts){
+  if(!lastTs)lastTs=ts;
+  const dt=Math.min(ts-lastTs,50);lastTs=ts;animT+=dt;
+  drawTof(dt);drawPhase(animT);drawTofWave();drawPhaseWave(animT);
+  requestAnimationFrame(animate);
+}
+
+el('dst').addEventListener('input',function(){
+  dist=parseFloat(Math.pow(10,+this.value).toFixed(4));
+  updateLabels();
+});
+updateLabels();
+document.fonts.ready.then(()=>requestAnimationFrame(animate));
+</script>
+</body>
+</html>
