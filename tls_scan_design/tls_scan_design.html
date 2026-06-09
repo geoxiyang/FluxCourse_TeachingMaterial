@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TLS Scan Design Lab</title>
+  <style>
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      --color-text-primary: #1a1a18;
+      --color-text-secondary: #6b6a63;
+      --color-border-tertiary: rgba(0,0,0,0.10);
+      --color-border-secondary: rgba(0,0,0,0.22);
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f4f3ef;
+      --color-accent: #1D9E75;
+      --color-warm: #EF9F27;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-text-primary: #e6e4dc;
+        --color-text-secondary: #9c9a92;
+        --color-border-tertiary: rgba(255,255,255,0.10);
+        --color-border-secondary: rgba(255,255,255,0.22);
+        --color-background-primary: #18181a;
+        --color-background-secondary: #222224;
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      background: var(--color-background-primary);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+      padding: 1.5rem 2rem 2rem;
+      line-height: 1.5;
+    }
+    button, input, select { color: inherit; font: inherit; }
+    button { border: 0; background: transparent; cursor: pointer; }
+    .wrap { max-width: 1380px; margin: 0 auto; }
+
+    h1 { font-size: 22px; font-weight: 500; margin-bottom: 2px; }
+    .sub { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 1rem; max-width: 760px; }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .seg-btn {
+      padding: 5px 14px; border-radius: 20px;
+      border: 1.5px solid var(--color-border-secondary);
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: all 0.15s;
+      background: var(--color-background-secondary);
+    }
+    .seg-btn.active {
+      background: var(--color-accent); color: #fff; border-color: var(--color-accent);
+    }
+    .sep { width: 1px; height: 22px; background: var(--color-border-secondary); margin: 0 4px; }
+    .range-label {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+    .range-label input { accent-color: var(--color-accent); width: 90px; }
+    .range-label b { color: var(--color-text-primary); min-width: 32px; font-weight: 500; font-family: var(--font-mono); }
+    .btn {
+      padding: 5px 14px; border-radius: 6px;
+      border: 1.5px solid var(--color-border-secondary);
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      background: var(--color-background-secondary);
+      transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+    .btn-reset { border-color: #c04040; color: #c04040; }
+    .btn-reset:hover { background: #ffeaea; }
+    .toggle-label {
+      display: flex; align-items: center; gap: 5px; font-size: 13px;
+      color: var(--color-text-secondary); cursor: pointer;
+    }
+    .toggle-label input { accent-color: var(--color-accent); }
+
+    /* Main layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 410px 1fr;
+      gap: 14px;
+      height: 680px;
+    }
+
+    /* Left: 2D map */
+    .panel-left {
+      display: flex; flex-direction: column; gap: 0;
+    }
+    .card {
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-lg);
+      background: var(--color-background-secondary);
+      overflow: hidden;
+    }
+    .card-title {
+      font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--color-text-secondary);
+      padding: 8px 12px 0;
+    }
+    #map-card { flex: 1; display: flex; flex-direction: column; }
+    #map-canvas {
+      display: block; cursor: crosshair;
+      width: 100%; aspect-ratio: 1 / 1;
+      border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
+    }
+
+    /* Right: 3D + profile/metrics */
+    .panel-right {
+      display: grid;
+      grid-template-rows: 1fr 180px;
+      gap: 14px;
+    }
+    #view3d-card { position: relative; }
+    #view3d-canvas { display: block; width: 100%; height: 100%; }
+    .view3d-hint {
+      position: absolute; top: 8px; right: 10px;
+      font-size: 11px; color: var(--color-text-secondary);
+      opacity: 0.6; pointer-events: none;
+    }
+
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 1fr 210px;
+      gap: 14px;
+    }
+    #profile-card { padding: 8px 10px; }
+    #profile-canvas { display: block; width: 100%; height: 100%; }
+
+    /* Metrics */
+    #metrics-card { padding: 10px 14px; display: flex; flex-direction: column; gap: 0; }
+    .metric-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 7px 0;
+      border-top: 0.5px solid var(--color-border-tertiary);
+      font-size: 13px; color: var(--color-text-secondary);
+    }
+    .metric-row:first-child { border-top: none; padding-top: 0; }
+    .metric-row b { font-size: 16px; font-weight: 600; color: var(--color-text-primary); font-family: var(--font-mono); }
+    .metric-big { font-size: 26px !important; line-height: 1; }
+    #cov-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; margin-top: 4px;
+    }
+
+    /* Hint strip below map */
+    .map-hint {
+      font-size: 11.5px; color: var(--color-text-secondary);
+      padding: 5px 12px 7px;
+      border-top: 0.5px solid var(--color-border-tertiary);
+    }
+
+    /* Compare panel */
+    .compare-section { margin-top: 18px; }
+    .compare-section h2 {
+      font-size: 14px; font-weight: 600; margin-bottom: 10px;
+      color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .compare-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    }
+    .compare-card {
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      background: var(--color-background-secondary);
+      padding: 12px;
+    }
+    .compare-card h3 {
+      font-size: 13px; font-weight: 600; margin-bottom: 8px; text-transform: capitalize;
+    }
+    .compare-card canvas { display: block; width: 100%; }
+    .compare-stat {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--color-text-secondary);
+      border-top: 0.5px solid var(--color-border-tertiary);
+      padding-top: 6px; margin-top: 6px;
+    }
+    .compare-stat b { color: var(--color-text-primary); font-family: var(--font-mono); }
+    .hidden { display: none !important; }
+
+    /* Guided questions */
+    .questions {
+      margin-top: 18px;
+      border: 1px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-lg);
+      background: var(--color-background-secondary);
+      padding: 14px 18px;
+    }
+    .questions h2 {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: var(--color-text-secondary); margin-bottom: 10px;
+    }
+    .q-list { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 24px; }
+    .q-item { font-size: 13px; color: var(--color-text-primary); }
+    .q-item span { color: var(--color-accent); font-weight: 600; margin-right: 5px; }
+
+    /* Error overlay */
+    #error-overlay {
+      position: fixed; inset: 0;
+      background: var(--color-background-primary);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    #error-overlay .msg {
+      max-width: 480px; text-align: center; padding: 2rem;
+    }
+    #error-overlay h2 { color: #c04040; margin-bottom: 0.5rem; }
+    #error-overlay code {
+      background: var(--color-background-secondary);
+      padding: 0.5rem 1rem; display: block; margin: 1rem 0;
+      font-family: var(--font-mono); font-size: 13px;
+      border-radius: 6px;
+    }
+  </style>
+
+  <!-- All scripts as plain (non-module) loads — works from file:// without CORS -->
+  <script src="data/synthetic/forests.js"></script>
+  <script src="vendor/three/three.global.js"></script>
+  <script src="vendor/three/OrbitControls.global.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>TLS Scan Design Lab</h1>
+  <p class="sub">Place scanner positions in a synthetic 50 × 50 m forest and see how scan placement affects occlusion.
+    Click on the map to add scanners (max 20). Drag the 3D view to rotate.</p>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="seg-btn active" data-scenario="savanna">Savanna</button>
+    <button class="seg-btn" data-scenario="temperate">Temperate</button>
+    <button class="seg-btn" data-scenario="tropical">Tropical</button>
+    <div class="sep"></div>
+    <label class="range-label">
+      Range
+      <input type="range" id="range-slider" min="10" max="60" step="5" value="40">
+      <b id="range-val">40 m</b>
+    </label>
+    <div class="sep"></div>
+    <button class="btn btn-reset" id="reset-btn">Reset scanners</button>
+    <button class="btn" id="compare-btn">Compare scenarios ▾</button>
+  </div>
+
+  <!-- Main panels -->
+  <div class="main-grid">
+
+    <!-- LEFT: 2D map -->
+    <div class="panel-left">
+      <div class="card" id="map-card">
+        <div class="card-title">Top-down map — click to place scanner</div>
+        <canvas id="map-canvas"></canvas>
+        <div class="map-hint" id="map-hint">No scanner placed yet. Click anywhere on the map.</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: 3D view + bottom row -->
+    <div class="panel-right">
+      <div class="card" id="view3d-card">
+        <canvas id="view3d-canvas"></canvas>
+        <span class="view3d-hint">drag to rotate · scroll to zoom</span>
+      </div>
+      <div class="bottom-row">
+        <div class="card" id="profile-card">
+          <div class="card-title">Vertical return profile</div>
+          <canvas id="profile-canvas"></canvas>
+        </div>
+        <div class="card" id="metrics-card">
+          <div class="metric-row">
+            <span>Coverage</span>
+            <b class="metric-big" id="m-cov">—</b>
+          </div>
+          <div class="metric-row">
+            <span>Trees observed</span>
+            <b id="m-trees">—</b>
+          </div>
+          <div class="metric-row">
+            <span>Scanners placed</span>
+            <b id="m-scans">0 / 20</b>
+          </div>
+          <div class="metric-row">
+            <span>Range limit</span>
+            <b id="m-range">40 m</b>
+          </div>
+          <div id="cov-badge"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .main-grid -->
+
+  <!-- Compare panel (hidden until button click) -->
+  <div class="compare-section hidden" id="compare-section">
+    <h2>Scenario comparison — same scanner positions, three forest types</h2>
+    <div class="compare-grid" id="compare-grid"></div>
+  </div>
+
+  <!-- Guided questions -->
+  <div class="questions">
+    <h2>Discussion questions</h2>
+    <div class="q-list">
+      <div class="q-item"><span>Q1</span>Where are the occlusion "shadow zones" in the top-down map? What creates them?</div>
+      <div class="q-item"><span>Q2</span>Look at the vertical return profile. Which height layers are under-sampled — and why?</div>
+      <div class="q-item"><span>Q3</span>Does adding a 4th scanner meaningfully improve coverage over 3? At what point does adding more scanners give diminishing returns?</div>
+      <div class="q-item"><span>Q4</span>Compare the same scanner design across scenarios. Why does tropical coverage drop most?</div>
+      <div class="q-item"><span>Q5</span>Where should you NOT place the scanner, and why? (Think about dense crowns, ground clutter.)</div>
+      <div class="q-item"><span>Q6</span>How would reducing the range from 40 m to 20 m change your scan strategy? Try it with the slider.</div>
+    </div>
+  </div>
+
+</div><!-- .wrap -->
+
+<!-- Error overlay shown if forests.js was not loaded -->
+<div id="error-overlay" class="hidden">
+  <div class="msg">
+    <h2>Forest data not found</h2>
+    <p>Generate the forest data before opening this file:</p>
+    <code>python scripts/generate_forests_js.py</code>
+    <p>Then refresh the page.</p>
+  </div>
+</div>
+
+<script>
+// THREE and THREE.OrbitControls are loaded globally by vendor scripts above
+
+// ─── Guard: check forests.js loaded ──────────────────────────────────────────
+if (typeof FORESTS_DATA === 'undefined') {
+  document.getElementById('error-overlay').classList.remove('hidden');
+  throw new Error('FORESTS_DATA not defined — run generate_forests_js.py first');
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PLOT = 50;
+const SCANNER_Z = 1.3;
+const MAX_SCANNERS = 20;
+
+// Per-biome leaf area density (m² leaf area / m³ crown volume) for Beer-Lambert transmittance
+const BIOME_LAD = { savanna: 0.3, temperate: 1.0, tropical: 2.5 };
+
+// Generate scanner colors evenly spaced on HSL wheel
+function scannerColor(idx, css = false) {
+  const hue = Math.round((idx / MAX_SCANNERS) * 360);
+  const str = `hsl(${hue},80%,42%)`;
+  return css ? str : new THREE.Color(str);
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  scenario: 'savanna',
+  maxRange: 40,
+  lad: BIOME_LAD.savanna,
+  scanners: [],   // [{x, y}]
+  results: [],    // [{hits, hitPts, nRays}]
+  combined: null, // {totalHits, allHitPts, allHitZ, coveragePct, nHit, nTrees}
+};
+
+// ─── Three.js globals ─────────────────────────────────────────────────────────
+let renderer, scene, camera, controls;
+let trunkMesh, crownMesh, branchLines, scanPointsMesh;
+const scannerSpheres = [];
+
+// ─── Simulation flat arrays (rebuilt on forest change) ────────────────────────
+let ta = null; // { n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+initThree();
+// Defer first draw so CSS layout is resolved before we read clientWidth/Height
+requestAnimationFrame(() => { loadForest('savanna'); });
+
+// ─── Three.js setup ───────────────────────────────────────────────────────────
+function initThree() {
+  const canvas = document.getElementById('view3d-canvas');
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.shadowMap.enabled = false;
+  renderer.setClearColor(0x1a1a1a, 0);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xdce8d4);
+
+  const aspect = canvas.clientWidth / canvas.clientHeight || 2;
+  camera = new THREE.PerspectiveCamera(42, aspect, 0.1, 800);
+  camera.position.set(25, -72, 55);
+  camera.lookAt(25, 25, 12);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(30, 10, 50);
+  scene.add(sun);
+
+  // Ground
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(PLOT, PLOT),
+    new THREE.MeshLambertMaterial({ color: 0x7aab5a })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(25, 25, 0);
+  scene.add(ground);
+
+  // Plot boundary
+  const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(PLOT, PLOT, 0.01));
+  const boundary = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x999999, opacity: 0.4, transparent: true }));
+  boundary.position.set(25, 25, 0);
+  scene.add(boundary);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(25, 25, 12);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 5;
+  controls.maxDistance = 300;
+
+  resizeRenderer();
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+function resizeRenderer() {
+  const card = document.getElementById('view3d-card');
+  const w = card.clientWidth, h = card.clientHeight;
+  if (w === 0 || h === 0) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+// ─── Forest loading (Three.js objects) ────────────────────────────────────────
+function loadForest(scenario) {
+  state.scenario = scenario;
+  state.lad = BIOME_LAD[scenario];
+  const fd = FORESTS_DATA[scenario];
+  const trees = fd.trees;
+  const templates = fd.templates;
+
+  // Remove old tree meshes
+  if (trunkMesh) { scene.remove(trunkMesh); trunkMesh.geometry.dispose(); }
+  if (crownMesh) { scene.remove(crownMesh); crownMesh.geometry.dispose(); }
+  if (branchLines) { scene.remove(branchLines); branchLines.geometry.dispose(); }
+  if (scanPointsMesh) { scene.remove(scanPointsMesh); scanPointsMesh.geometry.dispose(); }
+  scannerSpheres.forEach(s => scene.remove(s));
+  scannerSpheres.length = 0;
+
+  const n = trees.length;
+
+  // ── Trunk InstancedMesh ──
+  const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
+  trunkGeo.rotateX(Math.PI / 2); // align to Z axis (Three.js cylinders are Y-up by default)
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
+  trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, n);
+  trunkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  trunkMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);
+
+  // ── Crown InstancedMesh ──
+  const crownGeo = new THREE.SphereGeometry(1, 7, 5);
+  const crownMat = new THREE.MeshLambertMaterial({ color: 0x4CAF50 });
+  crownMesh = new THREE.InstancedMesh(crownGeo, crownMat, n);
+  crownMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  crownMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);
+
+  const mTrunk = new THREE.Matrix4();
+  const mCrown = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+
+  for (let i = 0; i < n; i++) {
+    const t = trees[i];
+    const r = Math.max(t.dbh / 2, 0.015);
+    const h = t.crown_base > 0.1 ? t.crown_base : 0.3;
+
+    // Trunk: cylinder along Z from 0 to crown_base
+    pos.set(t.x, t.y, h / 2);
+    scl.set(r, r, h);
+    mTrunk.compose(pos, quat, scl);
+    trunkMesh.setMatrixAt(i, mTrunk);
+
+    // Crown: ellipsoid (scaled sphere) centred at crown_base + crown_depth/2
+    const crz = t.crown_base + t.crown_depth / 2;
+    pos.set(t.x, t.y, crz);
+    scl.set(t.crown_radius, t.crown_radius, t.crown_depth / 2);
+    mCrown.compose(pos, quat, scl);
+    crownMesh.setMatrixAt(i, mCrown);
+
+    // Understory: dimmer trunk color
+    if (t.is_understory) {
+      trunkMesh.setColorAt(i, new THREE.Color(0x9e7a3e));
+      crownMesh.setColorAt(i, new THREE.Color(0x5d8c47));
+    }
+  }
+  trunkMesh.instanceMatrix.needsUpdate = true;
+  crownMesh.instanceMatrix.needsUpdate = true;
+  if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
+  if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
+
+  scene.add(trunkMesh);
+  scene.add(crownMesh);
+
+  // ── Branch LineSegments ──
+  buildBranches(trees, templates);
+
+  // ── Simulation flat arrays ──
+  ta = buildTreeArrays(trees);
+
+  // ── Initial profile draw ──
+  drawProfile(null, trees);
+  drawMap();
+}
+
+function buildBranches(trees, templates) {
+  if (branchLines) { scene.remove(branchLines); branchLines.geometry.dispose(); }
+
+  // Flatten all branch segments across all non-understory trees
+  const segs = [];
+  for (const tree of trees) {
+    if (tree.is_understory || tree.template_idx < 0) continue;
+    const tmpl = templates[tree.template_idx];
+    if (!tmpl || !tmpl.nodes) continue;
+    const nodes = tmpl.nodes;
+    const parents = tmpl.parents;
+    for (let i = 1; i < nodes.length; i++) {
+      const p = parents[i];
+      if (p < 0) continue;
+      segs.push(
+        tree.x + nodes[p][0], tree.y + nodes[p][1], nodes[p][2],
+        tree.x + nodes[i][0], tree.y + nodes[i][1], nodes[i][2]
+      );
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(segs, 3));
+  branchLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x6b4c1e, opacity: 0.7, transparent: true }));
+  branchLines.visible = false;
+  scene.add(branchLines);
+}
+
+// ─── Simulation engine ────────────────────────────────────────────────────────
+function buildTreeArrays(trees) {
+  const n = trees.length;
+  const tx = new Float32Array(n), ty = new Float32Array(n);
+  const tdbh = new Float32Array(n), th = new Float32Array(n);
+  const tcr = new Float32Array(n), tcd = new Float32Array(n), tcb = new Float32Array(n);
+  const tbsr = new Float32Array(n), tbsh = new Float32Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const t = trees[i];
+    tx[i] = t.x; ty[i] = t.y;
+    tdbh[i] = t.dbh; th[i] = t.height;
+    tcr[i] = t.crown_radius; tcd[i] = t.crown_depth; tcb[i] = t.crown_base;
+    // Bounding sphere: centred at tree centroid, radius covers full extent
+    tbsh[i] = t.height / 2;
+    tbsr[i] = t.height / 2 + t.crown_radius;
+  }
+  return { n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh };
+}
+
+function _rayCylinder(ox, oy, oz, dx, dy, dz, cx, cy, r, z0, z1) {
+  const ax = ox - cx, ay = oy - cy;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-10) return Infinity;
+  const b = 2 * (ax * dx + ay * dy);
+  const c = ax * ax + ay * ay - r * r;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return Infinity;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  if (t < 1e-4) return Infinity;
+  const hz = oz + t * dz;
+  return (hz >= z0 && hz <= z1) ? t : Infinity;
+}
+
+// Returns [tEntry, tExit] for an ellipsoid intersection, or null if no hit
+function _rayEllipsoidBoth(ox, oy, oz, dx, dy, dz, cx, cy, cz, rx, ry, rz) {
+  if (rx < 0.01 || ry < 0.01 || rz < 0.01) return null;
+  const ax = (ox - cx) / rx, ay = (oy - cy) / ry, az = (oz - cz) / rz;
+  const bx = dx / rx, by = dy / ry, bz = dz / rz;
+  const a = bx * bx + by * by + bz * bz;
+  const b = 2 * (ax * bx + ay * by + az * bz);
+  const c = ax * ax + ay * ay + az * az - 1;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / (2 * a); // entry (may be negative if inside)
+  const t2 = (-b + sq) / (2 * a); // exit
+  return t2 > 1e-4 ? [Math.max(t1, 0), t2] : null;
+}
+
+function simulateTLSwithArrays(arrays, scanX, scanY, maxRange, lad) {
+  const { n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh } = arrays;
+  return _simulateCore(n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh, scanX, scanY, maxRange, lad);
+}
+
+function simulateTLS(scanX, scanY, maxRange) {
+  const { n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh } = ta;
+  return _simulateCore(n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh, scanX, scanY, maxRange, state.lad);
+}
+
+// Beer-Lambert porous canopy simulation.
+// hits[] is Float32Array of expected weighted returns per tree.
+// A tree is "observed" when hits[i] > 0.5.
+function _simulateCore(n, tx, ty, tdbh, th, tcr, tcd, tcb, tbsr, tbsh, scanX, scanY, maxRange, lad) {
+  const hits = new Float32Array(n);
+  const hitPts = [];
+  const DEG = Math.PI / 180;
+  const scanZ = SCANNER_Z;
+
+  // Reusable candidate array — avoids per-ray allocation pressure
+  const cands = new Array(n);
+  let nCands = 0;
+
+  for (let azDeg = 0; azDeg < 360; azDeg++) {
+    const az = azDeg * DEG;
+    const cosAz = Math.cos(az), sinAz = Math.sin(az);
+
+    for (let elDeg = -30; elDeg < 90; elDeg++) {
+      const el = elDeg * DEG;
+      const cosEl = Math.cos(el);
+      const dx = cosEl * cosAz;
+      const dy = cosEl * sinAz;
+      const dz = Math.sin(el);
+
+      // ── Collect candidates (bounding sphere cull) ──────────────────────────
+      nCands = 0;
+      for (let i = 0; i < n; i++) {
+        const sox = tx[i] - scanX, soy = ty[i] - scanY, soz = tbsh[i] - scanZ;
+        const proj = sox * dx + soy * dy + soz * dz;
+        if (proj < -tbsr[i]) continue;
+        const perp2 = sox * sox + soy * soy + soz * soz - proj * proj;
+        if (perp2 > tbsr[i] * tbsr[i]) continue;
+
+        const r = Math.max(tdbh[i] * 0.5, 0.015);
+        const tTrunk = _rayCylinder(scanX, scanY, scanZ, dx, dy, dz, tx[i], ty[i], r, 0, tcb[i]);
+        const crz = tcb[i] + tcd[i] * 0.5;
+        const crPair = _rayEllipsoidBoth(scanX, scanY, scanZ, dx, dy, dz,
+                                          tx[i], ty[i], crz, tcr[i], tcr[i], tcd[i] * 0.5);
+        const tFront = Math.min(tTrunk, crPair ? crPair[0] : Infinity);
+        if (tFront >= maxRange) continue;
+        cands[nCands++] = { i, tTrunk, crPair, tFront };
+      }
+
+      if (nCands === 0) continue;
+
+      // ── Sort nearest first ─────────────────────────────────────────────────
+      const slice = cands.slice(0, nCands);
+      slice.sort((a, b) => a.tFront - b.tFront);
+
+      // ── Beer-Lambert ray march ─────────────────────────────────────────────
+      let weight = 1.0;
+      let firstHitT = Infinity;
+      for (let ci = 0; ci < nCands; ci++) {
+        if (weight < 0.01) break;
+        const { i, tTrunk, crPair, tFront } = slice[ci];
+
+        const crownEntry = crPair ? crPair[0] : Infinity;
+
+        if (tTrunk < crownEntry && tTrunk < maxRange) {
+          // Opaque trunk hit
+          hits[i] += weight;
+          if (firstHitT === Infinity) {
+            hitPts.push(scanX + tTrunk * dx, scanY + tTrunk * dy, scanZ + tTrunk * dz);
+            firstHitT = tTrunk;
+          }
+          weight = 0;
+          break;
+        } else if (crPair && crownEntry < maxRange) {
+          // Porous crown: Beer-Lambert
+          const pathLen = crPair[1] - crPair[0];
+          const pHit = 1 - Math.exp(-lad * pathLen);
+          hits[i] += weight * pHit;
+          if (weight * pHit > 0.05 && crownEntry < firstHitT) {
+            hitPts.push(scanX + crownEntry * dx, scanY + crownEntry * dy, scanZ + crownEntry * dz);
+            firstHitT = crownEntry;
+          }
+          weight *= (1 - pHit);
+        }
+      }
+    }
+  }
+
+  return { hits, hitPts, nRays: 43200 };
+}
+
+const OBSERVE_THRESHOLD = 0.5; // fractional hit weight to count a tree as "observed"
+
+function combineScans(results, n) {
+  const totalHits = new Float32Array(n);
+  const allHitPts = [];
+  for (const r of results) {
+    for (let i = 0; i < n; i++) totalHits[i] += r.hits[i];
+    for (const v of r.hitPts) allHitPts.push(v);
+  }
+  const nHit = totalHits.reduce((s, c) => s + (c > OBSERVE_THRESHOLD ? 1 : 0), 0);
+  const allHitZ = [];
+  for (let i = 2; i < allHitPts.length; i += 3) allHitZ.push(allHitPts[i]);
+  return { totalHits, allHitPts, allHitZ, nHit, nTrees: n, coveragePct: 100 * nHit / n };
+}
+
+// ─── Add a scanner ─────────────────────────────────────────────────────────────
+function addScanner(forestX, forestY) {
+  if (state.scanners.length >= MAX_SCANNERS) return;
+
+  const idx = state.scanners.length;
+  state.scanners.push({ x: forestX, y: forestY });
+
+  const result = simulateTLS(forestX, forestY, state.maxRange);
+  state.results.push(result);
+  state.combined = combineScans(state.results, ta.n);
+
+  // 3D scanner sphere
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.35, 8, 6),
+    new THREE.MeshBasicMaterial({ color: scannerColor(idx) })
+  );
+  sphere.position.set(forestX, forestY, SCANNER_Z);
+  scene.add(sphere);
+  scannerSpheres.push(sphere);
+
+  // 3D range ring (horizontal circle at scanner height)
+  const ringPts = [];
+  for (let a = 0; a <= 64; a++) {
+    const ang = (a / 64) * Math.PI * 2;
+    ringPts.push(new THREE.Vector3(
+      forestX + state.maxRange * Math.cos(ang),
+      forestY + state.maxRange * Math.sin(ang),
+      SCANNER_Z
+    ));
+  }
+  const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPts);
+  const ring = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({
+    color: scannerColor(idx), opacity: 0.5, transparent: true
+  }));
+  scene.add(ring);
+  scannerSpheres.push(ring); // track for reset
+
+  updateCoverageColors();
+  updateScanPoints();
+  drawMap();
+  drawProfile(state.combined.allHitZ, FORESTS_DATA[state.scenario].trees);
+  updateMetrics();
+}
+
+function updateCoverageColors() {
+  if (!state.combined) return;
+  const { totalHits, nTrees } = state.combined;
+  const grayColor = new THREE.Color(0.55, 0.55, 0.55);
+  const greenLo = new THREE.Color(0.3, 0.7, 0.3);
+  const greenHi = new THREE.Color(0.1, 0.9, 0.2);
+
+  // Find max hits for normalisation
+  let maxHit = 0;
+  for (let i = 0; i < nTrees; i++) if (totalHits[i] > maxHit) maxHit = totalHits[i];
+
+  for (let i = 0; i < nTrees; i++) {
+    if (totalHits[i] <= OBSERVE_THRESHOLD) {
+      crownMesh.setColorAt(i, grayColor);
+      trunkMesh.setColorAt(i, new THREE.Color(0.5, 0.4, 0.3));
+    } else {
+      const t = maxHit > 0 ? totalHits[i] / maxHit : 0;
+      crownMesh.setColorAt(i, greenLo.clone().lerp(greenHi, t));
+      trunkMesh.setColorAt(i, new THREE.Color(0.55, 0.40, 0.15));
+    }
+  }
+  crownMesh.instanceColor.needsUpdate = true;
+  trunkMesh.instanceColor.needsUpdate = true;
+}
+
+function updateScanPoints() {
+  if (scanPointsMesh) { scene.remove(scanPointsMesh); scanPointsMesh.geometry.dispose(); }
+  if (!state.combined || !state.combined.allHitPts.length) return;
+
+  const flat = state.combined.allHitPts;
+  const nPts = flat.length / 3;
+  const posArr = new Float32Array(flat);   // already [x,y,z, ...]
+  const colArr = new Float32Array(nPts * 3);
+
+  // Find z range for colormap
+  let maxZ = 1;
+  for (let i = 2; i < flat.length; i += 3) if (flat[i] > maxZ) maxZ = flat[i];
+
+  for (let i = 0; i < nPts; i++) {
+    const z = flat[i * 3 + 2];
+    const t = Math.min(z / maxZ, 1);
+    // Viridis-like: dark blue → teal → green → yellow
+    colArr[i * 3]     = t < 0.5 ? 0.05 + t * 0.3 : 0.2 + (t - 0.5) * 1.6;
+    colArr[i * 3 + 1] = t < 0.25 ? 0.1 + t * 1.6 : (t < 0.75 ? 0.5 + (t - 0.25) * 0.6 : 0.8);
+    colArr[i * 3 + 2] = t < 0.5 ? 0.5 - t * 0.8 : 0.1;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3));
+  scanPointsMesh = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 0.20, vertexColors: true, sizeAttenuation: true, opacity: 0.65, transparent: true
+  }));
+  scene.add(scanPointsMesh);
+}
+
+// ─── 2D map drawing ────────────────────────────────────────────────────────────
+function drawMap() {
+  const canvas = document.getElementById('map-canvas');
+  const card   = document.getElementById('map-card');
+  // Size canvas to fill the card (minus title and hint rows)
+  const titleH = 26, hintH = 28;
+  const w = card.clientWidth;
+  const h = card.clientHeight - titleH - hintH;
+  const size = Math.min(w, h, 500);
+  canvas.width  = size;
+  canvas.height = size;
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+
+  const ctx = canvas.getContext('2d');
+  const scale = size / PLOT;
+  const trees  = FORESTS_DATA[state.scenario].trees;
+  const comb   = state.combined;
+
+  // Background
+  ctx.fillStyle = '#e8f5e2';
+  ctx.fillRect(0, 0, size, size);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+  ctx.lineWidth = 0.5;
+  for (let g = 10; g < PLOT; g += 10) {
+    const gp = g * scale;
+    ctx.beginPath(); ctx.moveTo(gp, 0); ctx.lineTo(gp, size); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, gp); ctx.lineTo(size, gp); ctx.stroke();
+  }
+
+  // Range circles
+  for (let si = 0; si < state.scanners.length; si++) {
+    const sc = state.scanners[si];
+    ctx.beginPath();
+    ctx.arc(sc.x * scale, (PLOT - sc.y) * scale, state.maxRange * scale, 0, Math.PI * 2);
+    ctx.strokeStyle = scannerColor(si, true);
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Trees
+  for (let i = 0; i < trees.length; i++) {
+    const t = trees[i];
+    const cx = t.x * scale;
+    const cy = (PLOT - t.y) * scale;
+    const cr = t.crown_radius * scale;
+
+    let fillColor;
+    if (!comb) {
+      fillColor = t.is_understory ? 'rgba(80,120,50,0.45)' : 'rgba(40,110,30,0.60)';
+    } else {
+      const hits = comb.totalHits[i];
+      // Check if tree is in range of any scanner but unobserved
+      let inRange = false;
+      for (const sc of state.scanners) {
+        const dx = t.x - sc.x, dy = t.y - sc.y;
+        if (Math.sqrt(dx*dx+dy*dy) < state.maxRange + t.crown_radius) { inRange = true; break; }
+      }
+      if (hits <= OBSERVE_THRESHOLD && inRange) {
+        fillColor = 'rgba(200,60,60,0.45)';   // in range, not observed = shadow zone
+      } else if (hits <= OBSERVE_THRESHOLD) {
+        fillColor = 'rgba(150,150,150,0.30)'; // out of range
+      } else {
+        // Green gradient by hit density
+        const maxHit = Math.max(...Array.from(comb.totalHits));
+        const t_val = hits / Math.max(maxHit, 1);
+        const g = Math.round(120 + t_val * 100);
+        fillColor = `rgba(20,${g},30,${0.35 + t_val * 0.45})`;
+      }
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(cr, 2), 0, Math.PI * 2);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+    if (!t.is_understory) {
+      ctx.strokeStyle = 'rgba(0,80,0,0.25)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+
+  // Scanner markers
+  for (let si = 0; si < state.scanners.length; si++) {
+    const sc = state.scanners[si];
+    const cx = sc.x * scale;
+    const cy = (PLOT - sc.y) * scale;
+    const color = scannerColor(si, true);
+
+    // Draw star
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 1.5;
+    drawStar(ctx, 9, 5);
+    ctx.restore();
+
+    // Label
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(`S${si+1}`, cx + 12, cy - 7);
+    ctx.fillText(`S${si+1}`, cx + 12, cy - 7);
+  }
+
+  // Scale bar
+  const barM = 10, barPx = barM * scale;
+  const bx = 10, by = size - 18;
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx, by-4); ctx.lineTo(bx, by+4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx+barPx, by-4); ctx.lineTo(bx+barPx, by+4); ctx.stroke();
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#333';
+  ctx.fillText(`${barM} m`, bx + barPx + 4, by + 4);
+
+  // Update hint
+  const hint = document.getElementById('map-hint');
+  if (state.scanners.length === 0) {
+    hint.textContent = 'No scanner placed yet. Click anywhere on the map.';
+  } else if (state.scanners.length < MAX_SCANNERS) {
+    const pct = state.combined ? state.combined.coveragePct.toFixed(1) : '—';
+    hint.textContent = `${state.scanners.length} scanner(s) placed — ${pct}% coverage. Click to add more.`;
+  } else {
+    hint.textContent = 'Maximum 20 scanners placed. Use Reset to start over.';
+  }
+}
+
+function drawStar(ctx, outerR, innerR, points = 5) {
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const a = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2;
+    i === 0 ? ctx.moveTo(r * Math.cos(a), r * Math.sin(a))
+            : ctx.lineTo(r * Math.cos(a), r * Math.sin(a));
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fill();
+}
+
+// ─── Vertical profile chart ────────────────────────────────────────────────────
+function drawProfile(hitZ, trees) {
+  const canvas = document.getElementById('profile-canvas');
+  const card   = document.getElementById('profile-card');
+  const w = card.clientWidth - 20;
+  const h = card.clientHeight - 28;
+  canvas.width  = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  const bins = [];
+  for (let z = 0; z < 44; z += 2) bins.push(z);
+  const nBins = bins.length;
+  const binH = (h - 20) / nBins;
+
+  // Expected density: proportional to crown volume per height band
+  const expected = new Float32Array(nBins);
+  for (const t of trees) {
+    if (t.is_understory && t.height < 1) continue;
+    const crownTop = t.crown_base + t.crown_depth;
+    for (let b = 0; b < nBins; b++) {
+      const zLo = bins[b], zHi = zLo + 2;
+      const overlap = Math.min(crownTop, zHi) - Math.max(t.crown_base, zLo);
+      if (overlap > 0) expected[b] += overlap * t.crown_radius * t.crown_radius;
+    }
+  }
+  const maxExp = Math.max(...expected, 1);
+
+  // Observed counts
+  const observed = new Float32Array(nBins);
+  if (hitZ && hitZ.length) {
+    for (const z of hitZ) {
+      const b = Math.floor(z / 2);
+      if (b >= 0 && b < nBins) observed[b]++;
+    }
+  }
+  const maxObs = Math.max(...observed, 1);
+
+  // Draw bars
+  const xOrigin = 40, xMax = w - 8;
+  for (let b = 0; b < nBins; b++) {
+    const y = h - 20 - (b + 1) * binH;
+
+    // Expected (background, blue)
+    const ew = (expected[b] / maxExp) * (xMax - xOrigin);
+    ctx.fillStyle = 'rgba(50,130,200,0.20)';
+    ctx.fillRect(xOrigin, y, ew, binH - 1);
+
+    // Observed (foreground, green)
+    if (hitZ && hitZ.length) {
+      const ow = (observed[b] / maxObs) * (xMax - xOrigin);
+      ctx.fillStyle = 'rgba(40,160,80,0.75)';
+      ctx.fillRect(xOrigin, y, ow, binH - 1);
+    }
+
+    // Y-axis labels every 10m
+    if (bins[b] % 10 === 0) {
+      ctx.fillStyle = '#888';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(bins[b] + 'm', xOrigin - 3, y + binH / 2 + 3);
+      ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(xOrigin, y + binH / 2); ctx.lineTo(xMax, y + binH / 2); ctx.stroke();
+    }
+  }
+
+  // Axis
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(xOrigin, 0); ctx.lineTo(xOrigin, h - 18); ctx.stroke();
+
+  // Legend
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(50,130,200,0.5)';
+  ctx.fillRect(xOrigin + 2, h - 15, 10, 8);
+  ctx.fillStyle = '#666';
+  ctx.fillText('Expected', xOrigin + 14, h - 8);
+
+  ctx.fillStyle = 'rgba(40,160,80,0.75)';
+  ctx.fillRect(xOrigin + 75, h - 15, 10, 8);
+  ctx.fillStyle = '#666';
+  ctx.fillText('Observed', xOrigin + 87, h - 8);
+
+  if (!hitZ) {
+    ctx.fillStyle = 'rgba(100,100,100,0.55)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Place scanner to see returns', (xOrigin + xMax) / 2, h / 2);
+  }
+}
+
+// ─── Metrics panel ─────────────────────────────────────────────────────────────
+function updateMetrics() {
+  const comb = state.combined;
+  document.getElementById('m-range').textContent = state.maxRange + ' m';
+  document.getElementById('m-scans').textContent = state.scanners.length + ' / ' + MAX_SCANNERS;
+
+  if (!comb) {
+    document.getElementById('m-cov').textContent = '—';
+    document.getElementById('m-trees').textContent = '—';
+    document.getElementById('cov-badge').textContent = '';
+    return;
+  }
+
+  const pct = comb.coveragePct;
+  document.getElementById('m-cov').textContent = pct.toFixed(1) + '%';
+  document.getElementById('m-trees').textContent = `${comb.nHit} / ${comb.nTrees}`;
+
+  const badge = document.getElementById('cov-badge');
+  if (pct >= 80) {
+    badge.textContent = '✓ Excellent (>80%)';
+    badge.style.cssText = 'background:#d4edda;color:#155724;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-top:6px';
+  } else if (pct >= 60) {
+    badge.textContent = '↑ Good — try 4th scanner';
+    badge.style.cssText = 'background:#fff3cd;color:#856404;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-top:6px';
+  } else if (pct > 0) {
+    badge.textContent = '↻ Reposition scanners';
+    badge.style.cssText = 'background:#fde8e8;color:#7a1f1f;display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-top:6px';
+  } else {
+    badge.textContent = '';
+  }
+}
+
+// ─── Compare panel ─────────────────────────────────────────────────────────────
+function runCompare() {
+  if (state.scanners.length === 0) {
+    alert('Place at least one scanner before comparing scenarios.');
+    return;
+  }
+
+  const section = document.getElementById('compare-section');
+  const grid    = document.getElementById('compare-grid');
+  section.classList.remove('hidden');
+  grid.innerHTML = '';
+
+  const biomeColors = { savanna: '#e6a817', temperate: '#2e7d32', tropical: '#1b5e20' };
+
+  for (const scenario of ['savanna', 'temperate', 'tropical']) {
+    const fd = FORESTS_DATA[scenario];
+    const trees = fd.trees;
+    const taLocal = buildTreeArrays(trees);
+
+    const results = state.scanners.map(sc =>
+      simulateTLSwithArrays(taLocal, sc.x, sc.y, state.maxRange, BIOME_LAD[scenario])
+    );
+    const comb = combineScans(results, trees.length);
+
+    // Build card
+    const card = document.createElement('div');
+    card.className = 'compare-card';
+    card.innerHTML = `<h3 style="color:${biomeColors[scenario]}">${scenario}</h3>`;
+
+    // Mini profile canvas
+    const canvas = document.createElement('canvas');
+    canvas.style.height = '120px';
+    card.appendChild(canvas);
+
+    // Stats
+    const stat = document.createElement('div');
+    stat.className = 'compare-stat';
+    stat.innerHTML = `
+      <span>Coverage</span><b>${comb.coveragePct.toFixed(1)}%</b>
+      <span style="margin-left:10px">Trees hit</span><b>${comb.nHit}/${trees.length}</b>`;
+    card.appendChild(stat);
+
+    grid.appendChild(card);
+
+    // Draw mini profile
+    requestAnimationFrame(() => drawMiniProfile(canvas, comb.allHitZ, trees));
+  }
+
+  section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function drawMiniProfile(canvas, hitZ, trees) {
+  const w = canvas.clientWidth || 240, h = 120;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  const bins = [];
+  for (let z = 0; z < 44; z += 4) bins.push(z);
+  const nBins = bins.length;
+  const barH = (h - 10) / nBins;
+
+  const observed = new Float32Array(nBins);
+  for (const z of hitZ) {
+    const b = Math.floor(z / 4);
+    if (b >= 0 && b < nBins) observed[b]++;
+  }
+  const maxObs = Math.max(...observed, 1);
+
+  const xO = 28, xM = w - 4;
+  for (let b = 0; b < nBins; b++) {
+    const y = h - 10 - (b + 1) * barH;
+    const ow = (observed[b] / maxObs) * (xM - xO);
+    ctx.fillStyle = 'rgba(40,160,80,0.75)';
+    ctx.fillRect(xO, y, ow, barH - 1);
+    if (bins[b] % 8 === 0) {
+      ctx.fillStyle = '#999'; ctx.font = '8px sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText(bins[b]+'m', xO-2, y + barH/2 + 3);
+    }
+  }
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(xO, 0); ctx.lineTo(xO, h-8); ctx.stroke();
+}
+
+// ─── Reset ─────────────────────────────────────────────────────────────────────
+function reset() {
+  state.scanners.length = 0;
+  state.results.length = 0;
+  state.combined = null;
+
+  scannerSpheres.forEach(s => scene.remove(s));
+  scannerSpheres.length = 0;
+
+  if (scanPointsMesh) { scene.remove(scanPointsMesh); scanPointsMesh = null; }
+
+  // Restore default tree colors
+  const trees = FORESTS_DATA[state.scenario].trees;
+  for (let i = 0; i < trees.length; i++) {
+    const t = trees[i];
+    const def = t.is_understory ? new THREE.Color(0x5d8c47) : new THREE.Color(0x4CAF50);
+    crownMesh.setColorAt(i, def);
+    trunkMesh.setColorAt(i, new THREE.Color(t.is_understory ? 0x9e7a3e : 0x8B6914));
+  }
+  crownMesh.instanceColor.needsUpdate = true;
+  trunkMesh.instanceColor.needsUpdate = true;
+
+  document.getElementById('compare-section').classList.add('hidden');
+
+  drawMap();
+  drawProfile(null, trees);
+  updateMetrics();
+}
+
+// ─── Event handlers ────────────────────────────────────────────────────────────
+document.getElementById('map-canvas').addEventListener('click', e => {
+  if (state.scanners.length >= MAX_SCANNERS) return;
+  const canvas = document.getElementById('map-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const canvasX = (e.clientX - rect.left) / rect.width  * canvas.width;
+  const canvasY = (e.clientY - rect.top)  / rect.height * canvas.height;
+  const scale   = canvas.width / PLOT;
+  const forestX = canvasX / scale;
+  const forestY = PLOT - canvasY / scale;
+
+  if (forestX < 0 || forestX > PLOT || forestY < 0 || forestY > PLOT) return;
+  addScanner(forestX, forestY);
+});
+
+document.querySelectorAll('.seg-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.scenario = btn.dataset.scenario;
+    reset();
+    loadForest(state.scenario);
+  });
+});
+
+document.getElementById('range-slider').addEventListener('input', e => {
+  state.maxRange = parseInt(e.target.value);
+  document.getElementById('range-val').textContent = state.maxRange + ' m';
+  document.getElementById('m-range').textContent = state.maxRange + ' m';
+  // Re-run all scans with new range
+  if (state.scanners.length) {
+    state.results = state.scanners.map(sc => simulateTLS(sc.x, sc.y, state.maxRange));
+    state.combined = combineScans(state.results, ta.n);
+    updateCoverageColors();
+    updateScanPoints();
+    updateMetrics();
+  }
+  // Rebuild range rings
+  for (let i = scannerSpheres.length - 1; i >= 0; i--) {
+    if (scannerSpheres[i].isLine) {
+      scene.remove(scannerSpheres[i]);
+      scannerSpheres.splice(i, 1);
+    }
+  }
+  for (let si = 0; si < state.scanners.length; si++) {
+    const sc = state.scanners[si];
+    const ringPts = [];
+    for (let a = 0; a <= 64; a++) {
+      const ang = (a / 64) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(
+        sc.x + state.maxRange * Math.cos(ang),
+        sc.y + state.maxRange * Math.sin(ang),
+        SCANNER_Z
+      ));
+    }
+    const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPts);
+    const ring = new THREE.Line(ringGeo, new THREE.LineBasicMaterial({
+      color: scannerColor(si), opacity: 0.5, transparent: true
+    }));
+    scene.add(ring);
+    scannerSpheres.push(ring);
+  }
+  drawMap();
+  if (state.combined) drawProfile(state.combined.allHitZ, FORESTS_DATA[state.scenario].trees);
+});
+
+
+document.getElementById('reset-btn').addEventListener('click', reset);
+document.getElementById('compare-btn').addEventListener('click', runCompare);
+
+window.addEventListener('resize', () => {
+  resizeRenderer();
+  drawMap();
+  drawProfile(state.combined ? state.combined.allHitZ : null, FORESTS_DATA[state.scenario].trees);
+});
+
+// Initial metrics sync
+updateMetrics();
+
+</script>
+</body>
+</html>

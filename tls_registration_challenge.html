@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registration Challenge — FluxCourse TLS</title>
+<!-- OFFLINE NOTE: replace the cdnjs URL below with a local "three.min.js"
+     (relative path) before class so the viewer runs with no internet. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* ── Reset & base ──────────────────────────────────────────── */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0c0e12;--bg2:#13161c;--bg3:#1a1e26;--bg4:#242a34;
+  --fg:#c8cdd6;--fg2:#8a92a0;--fg3:#555d6e;
+  --accent:#00e0c0;--accent2:#00b89e;--accent-dim:rgba(0,224,192,.12);
+  --scan-a:#00d4e0;--scan-a-dim:rgba(0,212,224,.15);
+  --scan-b:#e0a020;--scan-b-dim:rgba(224,160,32,.15);
+  --red:#e04050;--green:#30d080;--yellow:#e0c040;
+  --mono:'JetBrains Mono','Fira Code','SF Mono','Cascadia Code','Consolas',monospace;
+  --sans:'Inter','Segoe UI','Helvetica Neue',sans-serif;
+  --radius:6px;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px}
+
+/* ── Layout ────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh}
+#topbar{display:flex;align-items:center;gap:12px;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--bg4);flex-shrink:0;z-index:10}
+#topbar .logo{font-size:11px;text-transform:uppercase;letter-spacing:2.5px;color:var(--accent);font-weight:700}
+#topbar .sep{width:1px;height:18px;background:var(--bg4)}
+#topbar .title{font-size:13px;color:var(--fg);font-weight:400}
+#topbar .spacer{flex:1}
+#topbar .stage-badge{font-size:10px;padding:3px 10px;border-radius:12px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+.stage-pick{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,224,192,.3)}
+.stage-align{background:rgba(48,208,128,.12);color:var(--green);border:1px solid rgba(48,208,128,.3)}
+.stage-icp{background:rgba(224,192,64,.12);color:var(--yellow);border:1px solid rgba(224,192,64,.3)}
+.stage-done{background:rgba(48,208,128,.12);color:var(--green);border:1px solid rgba(48,208,128,.3)}
+
+/* viewports */
+#viewport-row{display:flex;flex:1;min-height:0;position:relative}
+.viewport-wrap{flex:1;position:relative;overflow:hidden;border-right:1px solid var(--bg4)}
+.viewport-wrap:last-child{border-right:none}
+.viewport-wrap.merged{flex:1}
+.viewport-wrap.hidden{display:none}
+.vp-label{position:absolute;top:10px;left:12px;font-size:10px;text-transform:uppercase;letter-spacing:2px;padding:3px 10px;border-radius:3px;z-index:5;pointer-events:none}
+.vp-label-a{background:var(--scan-a-dim);color:var(--scan-a);border:1px solid rgba(0,212,224,.25)}
+.vp-label-b{background:var(--scan-b-dim);color:var(--scan-b);border:1px solid rgba(224,160,32,.25)}
+.vp-label-merged{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(0,224,192,.25)}
+canvas{display:block}
+
+/* instruction overlay */
+#instruction-overlay{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(12,14,18,.85);z-index:20;cursor:pointer;transition:opacity .4s}
+#instruction-overlay.hidden{opacity:0;pointer-events:none}
+.instr-card{max-width:520px;padding:32px 40px;background:var(--bg3);border:1px solid var(--bg4);border-radius:10px;text-align:center}
+.instr-card h2{font-family:var(--sans);font-size:20px;font-weight:600;color:var(--fg);margin-bottom:12px}
+.instr-card p{font-size:13px;color:var(--fg2);line-height:1.7;margin-bottom:16px}
+.instr-card .key{display:inline-block;padding:2px 8px;background:var(--bg4);border-radius:3px;font-size:11px;color:var(--accent);margin:0 2px}
+.instr-card .start-btn{display:inline-block;padding:8px 28px;background:var(--accent);color:var(--bg);font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;border:none;border-radius:4px;cursor:pointer;transition:background .2s}
+.instr-card .start-btn:hover{background:var(--accent2)}
+
+/* ── Bottom panel ──────────────────────────────────────────── */
+#bottom-panel{display:flex;gap:0;background:var(--bg2);border-top:1px solid var(--bg4);flex-shrink:0;height:180px;min-height:140px}
+.panel-section{padding:10px 14px;border-right:1px solid var(--bg4);display:flex;flex-direction:column;overflow-y:auto}
+.panel-section:last-child{border-right:none}
+.panel-section h3{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:var(--fg3);margin-bottom:8px;flex-shrink:0}
+
+/* target table */
+#target-panel{width:280px}
+#target-table{width:100%;border-collapse:collapse;font-size:11px}
+#target-table th{text-align:left;color:var(--fg3);font-weight:400;padding:2px 6px;border-bottom:1px solid var(--bg4);font-size:9px;text-transform:uppercase;letter-spacing:1px}
+#target-table td{padding:4px 6px;border-bottom:1px solid rgba(36,42,52,.5)}
+.pair-id{color:var(--accent);font-weight:600}
+.coord-a{color:var(--scan-a)}
+.coord-b{color:var(--scan-b)}
+.unpaired{color:var(--fg3);font-style:italic}
+
+/* RMSE */
+#rmse-panel{width:200px;align-items:center;justify-content:center}
+#rmse-display{font-size:36px;font-weight:700;color:var(--fg3);text-align:center;margin:8px 0 4px}
+#rmse-display.good{color:var(--green)}
+#rmse-display.ok{color:var(--yellow)}
+#rmse-display.bad{color:var(--red)}
+#rmse-label{font-size:10px;color:var(--fg3);text-align:center;letter-spacing:1px}
+#rmse-chart{width:100%;flex:1;min-height:0}
+
+/* transform */
+#transform-panel{flex:1;min-width:200px}
+#transform-matrix{font-size:10px;line-height:1.8;color:var(--fg2)}
+#transform-matrix .row{display:flex;gap:4px}
+#transform-matrix .cell{width:72px;text-align:right;color:var(--fg)}
+#transform-matrix .cell.t{color:var(--accent)}
+
+/* controls */
+#controls-panel{width:200px;display:flex;flex-direction:column;gap:6px;justify-content:center;align-items:center}
+.ctrl-btn{width:170px;padding:10px 0;border:1px solid var(--bg4);background:var(--bg3);color:var(--fg2);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:1.5px;border-radius:var(--radius);cursor:pointer;transition:all .2s;text-align:center}
+.ctrl-btn:hover:not(:disabled){background:var(--bg4);color:var(--fg)}
+.ctrl-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:700}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed}
+.ctrl-btn.icp-btn{border-color:var(--yellow);color:var(--yellow)}
+.ctrl-btn.icp-btn:hover:not(:disabled){background:rgba(224,192,64,.15)}
+.ctrl-btn.reset-btn{border-color:var(--red);color:var(--red);font-size:10px;padding:6px 0;width:120px}
+.ctrl-btn.reset-btn:hover{background:rgba(224,64,80,.1)}
+
+/* ICP explainer */
+#icp-explainer{position:absolute;top:10px;right:12px;width:240px;background:rgba(19,22,28,.92);border:1px solid var(--bg4);border-radius:8px;padding:14px;z-index:15;display:none}
+#icp-explainer.visible{display:block}
+#icp-explainer h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--yellow);margin-bottom:10px}
+.icp-step{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;opacity:.35;transition:opacity .3s}
+.icp-step.active{opacity:1}
+.icp-step .step-num{width:20px;height:20px;border-radius:50%;border:1px solid var(--fg3);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--fg3);flex-shrink:0;transition:all .3s}
+.icp-step.active .step-num{border-color:var(--yellow);color:var(--yellow);background:rgba(224,192,64,.12)}
+.icp-step .step-text{font-size:10px;color:var(--fg2);line-height:1.5}
+.icp-step.active .step-text{color:var(--fg)}
+#icp-iter-label{font-size:10px;color:var(--fg3);text-align:center;margin-top:6px}
+#icp-iter-label span{color:var(--yellow);font-weight:600}
+
+/* file picker */
+#file-picker-bar{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;gap:10px;padding:6px 14px;background:rgba(19,22,28,.9);border-top:1px solid var(--bg4);z-index:15;font-size:11px}
+#file-picker-bar label{color:var(--fg3);font-size:10px;text-transform:uppercase;letter-spacing:1px}
+#file-picker-bar input[type=file]{display:none}
+.file-btn{padding:4px 12px;background:var(--bg4);border:1px solid var(--fg3);color:var(--fg2);border-radius:3px;cursor:pointer;font-family:var(--mono);font-size:10px;transition:all .2s}
+.file-btn:hover{background:var(--bg3);color:var(--fg)}
+.file-status{color:var(--fg3);font-size:10px}
+
+/* compare toggle */
+#compare-toggle{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);z-index:15;display:none;align-items:center;gap:8px;padding:6px 16px;background:rgba(19,22,28,.9);border:1px solid var(--bg4);border-radius:20px}
+#compare-toggle.visible{display:flex}
+#compare-toggle label{font-size:10px;color:var(--fg2);text-transform:uppercase;letter-spacing:1px;cursor:pointer}
+#compare-toggle input{accent-color:var(--accent)}
+
+/* verdict banner */
+#verdict-banner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:25;display:none;text-align:center;padding:28px 40px;background:rgba(12,14,18,.92);border-radius:12px;backdrop-filter:blur(8px);min-width:340px}
+#verdict-banner.visible{display:block;animation:verdictIn .5s ease}
+@keyframes verdictIn{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+#verdict-icon{font-size:40px;margin-bottom:8px}
+#verdict-title{font-family:var(--sans);font-size:18px;font-weight:600;margin-bottom:6px}
+#verdict-detail{font-size:11px;color:var(--fg2);line-height:1.7;margin-bottom:16px}
+#verdict-banner.good{border:1px solid rgba(48,208,128,.4)}
+#verdict-banner.good #verdict-title{color:var(--green)}
+#verdict-banner.marginal{border:1px solid rgba(224,192,64,.4)}
+#verdict-banner.marginal #verdict-title{color:var(--yellow)}
+#verdict-banner.bad{border:1px solid rgba(224,64,80,.4)}
+#verdict-banner.bad #verdict-title{color:var(--red)}
+.verdict-btn{padding:8px 24px;border:none;border-radius:4px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;margin:0 4px;transition:all .2s}
+.verdict-btn.retry{background:var(--red);color:#fff}
+.verdict-btn.retry:hover{background:#c03040}
+.verdict-btn.dismiss{background:var(--bg4);color:var(--fg2);border:1px solid var(--fg3)}
+.verdict-btn.dismiss:hover{background:var(--bg3);color:var(--fg)}
+
+/* responsive */
+@media(max-width:900px){
+  #bottom-panel{height:auto;flex-wrap:wrap}
+  .panel-section{min-width:140px;flex:1}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- Top bar -->
+<div id="topbar">
+  <span class="logo">FluxCourse</span>
+  <span class="sep"></span>
+  <span class="title">Registration Challenge</span>
+  <span class="spacer"></span>
+  <span id="stage-badge" class="stage-badge stage-pick">① Pick Targets</span>
+</div>
+
+<!-- Viewports -->
+<div id="viewport-row">
+  <div class="viewport-wrap" id="vp-a-wrap">
+    <span class="vp-label vp-label-a">Scan A · Position 1</span>
+    <canvas id="canvas-a"></canvas>
+  </div>
+  <div class="viewport-wrap" id="vp-b-wrap">
+    <span class="vp-label vp-label-b">Scan B · Position 2</span>
+    <canvas id="canvas-b"></canvas>
+  </div>
+  <div class="viewport-wrap merged hidden" id="vp-m-wrap">
+    <span class="vp-label vp-label-merged">Merged Registration</span>
+    <canvas id="canvas-m"></canvas>
+  </div>
+
+  <!-- Instruction overlay -->
+  <div id="instruction-overlay">
+    <div class="instr-card">
+      <h2>Scan Registration Challenge</h2>
+      <p>Two TLS scans of the same forest plot, captured from different positions. They share the same coordinate space conceptually — but aren't aligned yet.</p>
+      <p>Find the <span class="key">spherical targets</span> in each scan. Click a target in <span style="color:var(--scan-a)">Scan A</span>, then click the matching target in <span style="color:var(--scan-b)">Scan B</span> to form a pair. You need at least <span class="key">3 pairs</span>.</p>
+      <p style="font-size:11px;color:var(--fg3)">Orbit: drag · Zoom: scroll · Pan: right-drag</p>
+      <button class="start-btn" onclick="dismissOverlay()">Begin Challenge</button>
+    </div>
+  </div>
+
+  <!-- ICP explainer overlay -->
+  <div id="icp-explainer">
+    <h4>ICP Algorithm</h4>
+    <div class="icp-step" id="icp-s1">
+      <div class="step-num">1</div>
+      <div class="step-text">Find nearest neighbor in Scan A for every point in Scan B</div>
+    </div>
+    <div class="icp-step" id="icp-s2">
+      <div class="step-num">2</div>
+      <div class="step-text">Compute rigid transform (R, t) minimizing paired distances</div>
+    </div>
+    <div class="icp-step" id="icp-s3">
+      <div class="step-num">3</div>
+      <div class="step-text">Apply transform to Scan B, update RMSE</div>
+    </div>
+    <div class="icp-step" id="icp-s4">
+      <div class="step-num">4</div>
+      <div class="step-text">Repeat until RMSE converges (Δ &lt; threshold)</div>
+    </div>
+    <div id="icp-iter-label">Iteration <span id="icp-iter-num">—</span> / <span id="icp-iter-total">—</span></div>
+  </div>
+
+  <!-- Compare toggle -->
+  <div id="compare-toggle">
+    <label><input type="checkbox" id="compare-cb"> Flicker compare (pre / post)</label>
+  </div>
+
+  <!-- Verdict banner -->
+  <div id="verdict-banner">
+    <div id="verdict-icon"></div>
+    <div id="verdict-title"></div>
+    <div id="verdict-detail"></div>
+    <div id="verdict-actions"></div>
+  </div>
+
+  <!-- File picker -->
+  <div id="file-picker-bar">
+    <label>Load real data:</label>
+    <input type="file" id="file-a" accept=".pcb">
+    <button class="file-btn" onclick="document.getElementById('file-a').click()">Scan A (.pcb)</button>
+    <span class="file-status" id="file-a-status">—</span>
+    <input type="file" id="file-b" accept=".pcb">
+    <button class="file-btn" onclick="document.getElementById('file-b').click()">Scan B (.pcb)</button>
+    <span class="file-status" id="file-b-status">—</span>
+  </div>
+</div>
+
+<!-- Bottom panel -->
+<div id="bottom-panel">
+  <div class="panel-section" id="target-panel">
+    <h3>Target Pairs</h3>
+    <table id="target-table">
+      <thead><tr><th>Pair</th><th>Scan A</th><th>Scan B</th></tr></thead>
+      <tbody id="target-tbody"></tbody>
+    </table>
+  </div>
+  <div class="panel-section" id="rmse-panel">
+    <h3>Registration RMSE</h3>
+    <div id="rmse-display">— mm</div>
+    <div id="rmse-label">Root Mean Square Error</div>
+    <canvas id="rmse-chart"></canvas>
+  </div>
+  <div class="panel-section" id="transform-panel">
+    <h3>Transformation Matrix</h3>
+    <div id="transform-matrix">
+      <div class="row"><span class="cell">1.0000</span><span class="cell">0.0000</span><span class="cell">0.0000</span><span class="cell t">0.000</span></div>
+      <div class="row"><span class="cell">0.0000</span><span class="cell">1.0000</span><span class="cell">0.0000</span><span class="cell t">0.000</span></div>
+      <div class="row"><span class="cell">0.0000</span><span class="cell">0.0000</span><span class="cell">1.0000</span><span class="cell t">0.000</span></div>
+      <div class="row"><span class="cell">0.0000</span><span class="cell">0.0000</span><span class="cell">0.0000</span><span class="cell t">1.000</span></div>
+    </div>
+  </div>
+  <div class="panel-section" id="controls-panel">
+    <button class="ctrl-btn" id="btn-align" disabled onclick="computeAlignment()">Compute Alignment</button>
+    <button class="ctrl-btn icp-btn" id="btn-icp" disabled onclick="runICP()">Run ICP Refinement</button>
+    <button class="ctrl-btn reset-btn" onclick="resetAll()">Reset</button>
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  REGISTRATION CHALLENGE — FluxCourse TLS
+// ═══════════════════════════════════════════════════════════════
+
+// ── Globals ───────────────────────────────────────────────────
+const SCAN_A_COLOR = 0x00d4e0;
+const SCAN_B_COLOR = 0xe0a020;
+const TARGET_RADIUS = 0.144; // 28.8cm diameter sphere (2x for visibility)
+const MIN_PAIRS = 3;
+const NUM_TARGETS = 6;
+const ICP_ITERATIONS = 10;
+
+let state = {
+  phase: 'pick',        // pick | align | icp | done
+  pickingScan: 'a',      // which scan we expect next click on
+  pendingA: null,        // index of target clicked in A, awaiting B match
+  pairs: [],             // [{aIdx, bIdx, aPos, bPos}]
+  icpStep: 0,
+  icpRunning: false,
+  compareMode: false,
+  showPreAlignment: false,
+};
+
+// Three.js scenes
+let sceneA, sceneB, sceneM;
+let cameraA, cameraB, cameraM;
+let rendererA, rendererB, rendererM;
+let controlsA, controlsB, controlsM;
+let cloudA, cloudB;                    // THREE.Points
+let cloudB_merged;                      // clone of B in merged scene
+let targetsA = [], targetsB = [];       // THREE.Mesh[]
+let targetWorldA = [], targetWorldB = []; // Vector3[] — true positions
+
+// Known ground-truth transform (B -> A)
+let gtRotation, gtTranslation;         // applied to create Scan B
+let currentTransform = new THREE.Matrix4(); // accumulated B->A transform
+
+// ICP pre-computed sequence
+let icpSequence = [];  // [{matrix, rmse}]
+
+// Point data arrays for merged scene
+let pointsA_positions, pointsB_positions;
+let pointsB_original; // before any transform
+
+// ── Synthetic scene generation ────────────────────────────────
+
+function seededRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+function generateSyntheticForest() {
+  const rand = seededRandom(42);
+  const trees = [];
+  // Generate 10 trees in a 12m x 12m plot
+  for (let i = 0; i < 10; i++) {
+    let x, y, ok;
+    do {
+      x = (rand() - 0.5) * 11;
+      y = (rand() - 0.5) * 11;
+      ok = true;
+      for (const t of trees) {
+        if (Math.hypot(t.x - x, t.y - y) < 1.2) { ok = false; break; }
+      }
+    } while (!ok);
+    const dbh = 0.08 + rand() * 0.25;  // 8-33cm radius
+    const height = 5 + rand() * 12;
+    trees.push({ x, y, dbh, height });
+  }
+
+  // Place 6 targets — visible from both scanner positions
+  const targets = [];
+  const targetPositions = [
+    { x: -4.5, y: -4.0, z: 1.3 },
+    { x:  3.5, y: -3.5, z: 1.3 },
+    { x: -2.0, y:  4.0, z: 1.3 },
+    { x:  4.5, y:  3.0, z: 1.3 },
+    { x:  0.5, y: -0.5, z: 1.3 },
+    { x: -3.5, y:  1.5, z: 1.3 },
+  ];
+  for (const p of targetPositions) targets.push(new THREE.Vector3(p.x, p.z, p.y));
+
+  // Scanner positions
+  const scannerA = new THREE.Vector3(-6.5, 1.5, 0);
+  const scannerB = new THREE.Vector3(5.5, 1.5, 5.5);
+
+  return { trees, targets, scannerA, scannerB };
+}
+
+function generatePointCloud(trees, scannerPos, targets, rand, pointsPerTree, groundPoints) {
+  const positions = [];
+  const intensities = [];
+
+  // Ground plane
+  for (let i = 0; i < groundPoints; i++) {
+    const x = (rand() - 0.5) * 14;
+    const z = (rand() - 0.5) * 14;
+    const y = (rand() - 0.5) * 0.03; // slight noise
+    // Simple occlusion: skip if behind a tree trunk from scanner perspective
+    positions.push(x, y, z);
+    intensities.push(0.15 + rand() * 0.1);
+  }
+
+  // Trees
+  for (const tree of trees) {
+    // Stem
+    const stemPoints = Math.floor(pointsPerTree * 0.4);
+    for (let i = 0; i < stemPoints; i++) {
+      const h = rand() * tree.height;
+      const angle = rand() * Math.PI * 2;
+      const taper = tree.dbh * (1 - h / tree.height * 0.4);
+      const r = taper + (rand() - 0.5) * 0.005;
+      const x = tree.x + Math.cos(angle) * r;
+      const z = tree.y + Math.sin(angle) * r;
+      const y = h;
+
+      // Basic occlusion check: is this point on the far side of the trunk?
+      const toScanner = new THREE.Vector2(scannerPos.x - tree.x, scannerPos.z - tree.y);
+      const ptAngle = Math.atan2(Math.sin(angle), Math.cos(angle));
+      const scanAngle = Math.atan2(toScanner.y, toScanner.x);
+      let angleDiff = Math.abs(ptAngle - scanAngle);
+      if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+      if (angleDiff > Math.PI * 0.65) continue; // occluded
+
+      positions.push(x, y, z);
+      intensities.push(0.5 + rand() * 0.3);
+    }
+
+    // Crown (simplified sphere of points)
+    const crownPoints = Math.floor(pointsPerTree * 0.6);
+    const crownCenter = new THREE.Vector3(tree.x, tree.height * 0.7, tree.y);
+    const crownRadius = tree.dbh * 8 + 0.5;
+    for (let i = 0; i < crownPoints; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = crownRadius * (0.7 + rand() * 0.3);
+      const x = crownCenter.x + r * Math.sin(phi) * Math.cos(theta);
+      const y = crownCenter.y + r * Math.cos(phi) * 0.6; // squash vertically
+      const z = crownCenter.z + r * Math.sin(phi) * Math.sin(theta);
+      if (y < 1.5) continue; // below reasonable crown height
+      positions.push(x, y, z);
+      intensities.push(0.2 + rand() * 0.15);
+    }
+  }
+
+  // Target spheres (high-reflectance, dense points)
+  for (const t of targets) {
+    for (let i = 0; i < 200; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = TARGET_RADIUS + (rand() - 0.5) * 0.003;
+      const x = t.x + r * Math.sin(phi) * Math.cos(theta);
+      const y = t.y + r * Math.cos(phi);
+      const z = t.z + r * Math.sin(phi) * Math.sin(theta);
+      positions.push(x, y, z);
+      intensities.push(0.9 + rand() * 0.1);
+    }
+  }
+
+  return { positions: new Float32Array(positions), intensities: new Float32Array(intensities) };
+}
+
+// ── Ground-truth rigid transform for Scan B ───────────────────
+
+function createGroundTruthTransform() {
+  // Rotation: ~12° around Y axis + small tilts
+  const angleY = 0.21;  // ~12 degrees
+  const angleX = 0.015; // ~1 degree
+  const angleZ = -0.01;
+  const R = new THREE.Matrix4();
+  const rx = new THREE.Matrix4().makeRotationX(angleX);
+  const ry = new THREE.Matrix4().makeRotationY(angleY);
+  const rz = new THREE.Matrix4().makeRotationZ(angleZ);
+  R.multiply(rz).multiply(ry).multiply(rx);
+
+  // Translation: ~1.8m shift
+  const t = new THREE.Vector3(1.6, 0.05, -0.9);
+
+  const M = new THREE.Matrix4();
+  M.copy(R);
+  M.setPosition(t);
+
+  gtRotation = R;
+  gtTranslation = t;
+  return M;
+}
+
+function applyTransformToPositions(positions, matrix) {
+  const out = new Float32Array(positions.length);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < positions.length; i += 3) {
+    v.set(positions[i], positions[i+1], positions[i+2]);
+    v.applyMatrix4(matrix);
+    out[i] = v.x; out[i+1] = v.y; out[i+2] = v.z;
+  }
+  return out;
+}
+
+// ── Three.js setup ────────────────────────────────────────────
+
+function createOrbitControls(camera, domElement) {
+  // Minimal orbit controls (no import needed)
+  const ctrl = { enabled: true, target: new THREE.Vector3(0, 3, 0) };
+  let isDown = false, isRight = false;
+  let prevX = 0, prevY = 0;
+  let spherical = { theta: Math.PI * 0.25, phi: Math.PI * 0.35, radius: 18 };
+
+  function update() {
+    const sp = spherical;
+    camera.position.set(
+      ctrl.target.x + sp.radius * Math.sin(sp.phi) * Math.sin(sp.theta),
+      ctrl.target.y + sp.radius * Math.cos(sp.phi),
+      ctrl.target.z + sp.radius * Math.sin(sp.phi) * Math.cos(sp.theta)
+    );
+    camera.lookAt(ctrl.target);
+  }
+
+  domElement.addEventListener('mousedown', e => {
+    if (!ctrl.enabled) return;
+    isDown = true; isRight = e.button === 2;
+    prevX = e.clientX; prevY = e.clientY;
+  });
+  domElement.addEventListener('mousemove', e => {
+    if (!isDown || !ctrl.enabled) return;
+    const dx = e.clientX - prevX, dy = e.clientY - prevY;
+    prevX = e.clientX; prevY = e.clientY;
+    if (isRight) {
+      // Pan
+      const panSpeed = 0.01 * spherical.radius;
+      const right = new THREE.Vector3();
+      right.setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3();
+      up.setFromMatrixColumn(camera.matrixWorld, 1);
+      ctrl.target.addScaledVector(right, -dx * panSpeed);
+      ctrl.target.addScaledVector(up, dy * panSpeed);
+    } else {
+      spherical.theta -= dx * 0.005;
+      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+    }
+    update();
+  });
+  window.addEventListener('mouseup', () => { isDown = false; });
+  domElement.addEventListener('wheel', e => {
+    if (!ctrl.enabled) return;
+    e.preventDefault();
+    spherical.radius = Math.max(3, Math.min(50, spherical.radius * (1 + e.deltaY * 0.001)));
+    update();
+  }, { passive: false });
+  domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+  ctrl.update = update;
+  ctrl.spherical = spherical;
+  update();
+  return ctrl;
+}
+
+function initViewport(canvasId, bgColor) {
+  const canvas = document.getElementById(canvasId);
+  const wrap = canvas.parentElement;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(bgColor || 0x0c0e12);
+  scene.fog = new THREE.FogExp2(bgColor || 0x0c0e12, 0.015);
+
+  const camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 200);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // Ambient + directional light
+  scene.add(new THREE.AmbientLight(0x404050, 0.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.4);
+  dir.position.set(5, 15, 5);
+  scene.add(dir);
+
+  // Grid helper
+  const grid = new THREE.GridHelper(14, 14, 0x1a1e26, 0x1a1e26);
+  grid.position.y = -0.01;
+  scene.add(grid);
+
+  const controls = createOrbitControls(camera, canvas);
+
+  return { scene, camera, renderer, controls, canvas };
+}
+
+function createPointsMesh(positions, color, pointSize) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({ color, size: pointSize || 0.03, sizeAttenuation: true });
+  return new THREE.Points(geom, mat);
+}
+
+function createTargetSphere(position, color, opacity) {
+  const geom = new THREE.SphereGeometry(TARGET_RADIUS * 1.8, 16, 12);
+  const mat = new THREE.MeshPhongMaterial({
+    color, transparent: true, opacity: opacity || 0.5,
+    emissive: color, emissiveIntensity: 0.3
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.position.copy(position);
+  return mesh;
+}
+
+function createScannerMarker(pos, scene) {
+  const geom = new THREE.ConeGeometry(0.15, 0.4, 6);
+  const mat = new THREE.MeshPhongMaterial({ color: 0x808080, emissive: 0x404040 });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.position.copy(pos);
+  mesh.position.y += 0.2;
+  scene.add(mesh);
+}
+
+// ── Build scenes ──────────────────────────────────────────────
+
+let forest;
+
+function buildScenes() {
+  forest = generateSyntheticForest();
+  const rand1 = seededRandom(101);
+  const rand2 = seededRandom(202);
+
+  // Generate Scan A point cloud
+  const dataA = generatePointCloud(forest.trees, forest.scannerA, forest.targets, rand1, 1200, 5000);
+  pointsA_positions = dataA.positions;
+
+  // Ground-truth transform
+  const M = createGroundTruthTransform();
+
+  // Transform targets for Scan B
+  const targetsB_world = forest.targets.map(t => t.clone().applyMatrix4(M));
+
+  // Generate Scan B from scanner B position, then apply transform
+  const dataB_local = generatePointCloud(forest.trees, forest.scannerB, forest.targets, rand2, 1200, 5000);
+  pointsB_positions = applyTransformToPositions(dataB_local.positions, M);
+  pointsB_original = new Float32Array(pointsB_positions);
+
+  // Store true target positions
+  targetWorldA = forest.targets.map(t => t.clone());
+  targetWorldB = targetsB_world;
+
+  // ── Scene A ──
+  const vpA = initViewport('canvas-a', 0x0a0c10);
+  sceneA = vpA.scene; cameraA = vpA.camera; rendererA = vpA.renderer; controlsA = vpA.controls;
+  cloudA = createPointsMesh(pointsA_positions, SCAN_A_COLOR, 0.035);
+  sceneA.add(cloudA);
+  createScannerMarker(forest.scannerA, sceneA);
+
+  for (let i = 0; i < forest.targets.length; i++) {
+    const mesh = createTargetSphere(forest.targets[i], 0xffffff, 0.35);
+    mesh.userData.targetIdx = i;
+    targetsA.push(mesh);
+    sceneA.add(mesh);
+  }
+
+  // ── Scene B ──
+  const vpB = initViewport('canvas-b', 0x100c0a);
+  sceneB = vpB.scene; cameraB = vpB.camera; rendererB = vpB.renderer; controlsB = vpB.controls;
+  cloudB = createPointsMesh(pointsB_positions, SCAN_B_COLOR, 0.035);
+  sceneB.add(cloudB);
+
+  // Scanner B marker (also transformed)
+  const scannerB_t = forest.scannerB.clone().applyMatrix4(M);
+  createScannerMarker(scannerB_t, sceneB);
+
+  for (let i = 0; i < targetsB_world.length; i++) {
+    const mesh = createTargetSphere(targetsB_world[i], 0xffffff, 0.35);
+    mesh.userData.targetIdx = i;
+    targetsB.push(mesh);
+    sceneB.add(mesh);
+  }
+
+  // Set B camera to a different angle
+  controlsB.spherical.theta = Math.PI * 0.75;
+  controlsB.spherical.phi = Math.PI * 0.3;
+  controlsB.update();
+
+  // ── Merged scene (hidden initially) ──
+  const vpM = initViewport('canvas-m', 0x0c0e12);
+  sceneM = vpM.scene; cameraM = vpM.camera; rendererM = vpM.renderer; controlsM = vpM.controls;
+
+  // Pre-compute ICP sequence
+  precomputeICP();
+
+  // Start render loop
+  animate();
+
+  // Set up click handlers
+  setupClickHandlers();
+}
+
+// ── Click handling for target picking ─────────────────────────
+
+function setupClickHandlers() {
+  document.getElementById('canvas-a').addEventListener('click', e => onTargetClick(e, 'a'));
+  document.getElementById('canvas-b').addEventListener('click', e => onTargetClick(e, 'b'));
+}
+
+function onTargetClick(event, scan) {
+  if (state.phase !== 'pick') return;
+
+  const canvas = event.target;
+  const rect = canvas.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+
+  const camera = scan === 'a' ? cameraA : cameraB;
+  const targets = scan === 'a' ? targetsA : targetsB;
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.params.Mesh = { threshold: 0.1 };
+  raycaster.setFromCamera(mouse, camera);
+
+  const intersects = raycaster.intersectObjects(targets);
+  if (intersects.length === 0) return;
+
+  const hit = intersects[0].object;
+  const idx = hit.userData.targetIdx;
+
+  // Check if this target is already used
+  const usedA = state.pairs.map(p => p.aIdx);
+  const usedB = state.pairs.map(p => p.bIdx);
+
+  if (scan === 'a') {
+    if (usedA.includes(idx)) return; // already paired
+    // If we already have a pending A, replace it
+    if (state.pendingA !== null) {
+      targetsA[state.pendingA].material.emissiveIntensity = 0.3;
+      targetsA[state.pendingA].material.opacity = 0.35;
+    }
+    state.pendingA = idx;
+    hit.material.color.set(SCAN_A_COLOR);
+    hit.material.emissive.set(SCAN_A_COLOR);
+    hit.material.emissiveIntensity = 0.8;
+    hit.material.opacity = 0.85;
+    updateTargetTable();
+  } else {
+    // Scan B click
+    if (usedB.includes(idx)) return;
+    if (state.pendingA === null) return; // must pick A first
+
+    hit.material.color.set(SCAN_B_COLOR);
+    hit.material.emissive.set(SCAN_B_COLOR);
+    hit.material.emissiveIntensity = 0.8;
+    hit.material.opacity = 0.85;
+
+    // Lock the A target too
+    targetsA[state.pendingA].material.emissiveIntensity = 0.6;
+
+    // Record pair
+    state.pairs.push({
+      aIdx: state.pendingA,
+      bIdx: idx,
+      aPos: targetWorldA[state.pendingA].clone(),
+      bPos: targetWorldB[idx].clone()
+    });
+    state.pendingA = null;
+    updateTargetTable();
+
+    if (state.pairs.length >= MIN_PAIRS) {
+      document.getElementById('btn-align').disabled = false;
+    }
+  }
+}
+
+function updateTargetTable() {
+  const tbody = document.getElementById('target-tbody');
+  tbody.innerHTML = '';
+  for (let i = 0; i < state.pairs.length; i++) {
+    const p = state.pairs[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="pair-id">T${i+1}</td>
+      <td class="coord-a">(${p.aPos.x.toFixed(1)}, ${p.aPos.y.toFixed(1)}, ${p.aPos.z.toFixed(1)})</td>
+      <td class="coord-b">(${p.bPos.x.toFixed(1)}, ${p.bPos.y.toFixed(1)}, ${p.bPos.z.toFixed(1)})</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  // Show pending
+  if (state.pendingA !== null) {
+    const p = targetWorldA[state.pendingA];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="pair-id">T${state.pairs.length+1}</td>
+      <td class="coord-a">(${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})</td>
+      <td class="unpaired">click Scan B…</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// ── SVD-based rigid alignment ─────────────────────────────────
+
+function computeSVDAlignment(pairsA, pairsB) {
+  // Compute centroids
+  const n = pairsA.length;
+  const centA = new THREE.Vector3(), centB = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    centA.add(pairsA[i]);
+    centB.add(pairsB[i]);
+  }
+  centA.divideScalar(n);
+  centB.divideScalar(n);
+
+  // Build H matrix (3x3)
+  // H = sum( (bI - centB) * (aI - centA)^T )
+  const H = [
+    [0,0,0],
+    [0,0,0],
+    [0,0,0]
+  ];
+  for (let i = 0; i < n; i++) {
+    const a = pairsA[i].clone().sub(centA);
+    const b = pairsB[i].clone().sub(centB);
+    H[0][0] += b.x*a.x; H[0][1] += b.x*a.y; H[0][2] += b.x*a.z;
+    H[1][0] += b.y*a.x; H[1][1] += b.y*a.y; H[1][2] += b.y*a.z;
+    H[2][0] += b.z*a.x; H[2][1] += b.z*a.y; H[2][2] += b.z*a.z;
+  }
+
+  // SVD of 3x3 via Jacobi iterations (simple, robust for 3x3)
+  const { U, S, V } = svd3x3(H);
+
+  // R = V * U^T
+  const R = mat3Multiply(V, mat3Transpose(U));
+
+  // Ensure proper rotation (det = +1)
+  if (mat3Det(R) < 0) {
+    V[0][2] = -V[0][2]; V[1][2] = -V[1][2]; V[2][2] = -V[2][2];
+    const R2 = mat3Multiply(V, mat3Transpose(U));
+    for (let i=0;i<3;i++) for(let j=0;j<3;j++) R[i][j]=R2[i][j];
+  }
+
+  // t = centA - R * centB
+  const RcentB = mat3VecMul(R, centB);
+  const t = centA.clone().sub(new THREE.Vector3(RcentB[0], RcentB[1], RcentB[2]));
+
+  // Build 4x4
+  const M = new THREE.Matrix4();
+  M.set(
+    R[0][0], R[0][1], R[0][2], t.x,
+    R[1][0], R[1][1], R[1][2], t.y,
+    R[2][0], R[2][1], R[2][2], t.z,
+    0, 0, 0, 1
+  );
+
+  return M;
+}
+
+// ── Minimal 3x3 SVD (Jacobi) ─────────────────────────────────
+
+function svd3x3(A) {
+  // A^T A
+  const AtA = mat3Multiply(mat3Transpose(A), A);
+  // Eigendecomposition of A^T A via Jacobi
+  let V = [[1,0,0],[0,1,0],[0,0,1]];
+  let D = AtA.map(r => [...r]);
+
+  for (let iter = 0; iter < 50; iter++) {
+    // Find largest off-diagonal
+    let maxVal = 0, p = 0, q = 1;
+    for (let i = 0; i < 3; i++) for (let j = i+1; j < 3; j++) {
+      if (Math.abs(D[i][j]) > maxVal) { maxVal = Math.abs(D[i][j]); p = i; q = j; }
+    }
+    if (maxVal < 1e-10) break;
+
+    const theta = 0.5 * Math.atan2(2*D[p][q], D[p][p]-D[q][q]);
+    const c = Math.cos(theta), s = Math.sin(theta);
+    const G = [[1,0,0],[0,1,0],[0,0,1]];
+    G[p][p] = c; G[q][q] = c; G[p][q] = s; G[q][p] = -s;
+
+    D = mat3Multiply(mat3Multiply(mat3Transpose(G), D), G);
+    V = mat3Multiply(V, G);
+  }
+
+  // Singular values
+  const S = [Math.sqrt(Math.max(0,D[0][0])), Math.sqrt(Math.max(0,D[1][1])), Math.sqrt(Math.max(0,D[2][2]))];
+
+  // U = A * V * S^-1
+  const AV = mat3Multiply(A, V);
+  const U = AV.map((row, i) => row.map((val, j) => S[j] > 1e-10 ? val / S[j] : 0));
+
+  return { U, S, V };
+}
+
+function mat3Multiply(A, B) {
+  const C = [[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++) for(let k=0;k<3;k++) C[i][j]+=A[i][k]*B[k][j];
+  return C;
+}
+function mat3Transpose(A) {
+  return [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]];
+}
+function mat3Det(A) {
+  return A[0][0]*(A[1][1]*A[2][2]-A[1][2]*A[2][1])
+        -A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0])
+        +A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
+}
+function mat3VecMul(A, v) {
+  return [
+    A[0][0]*v.x+A[0][1]*v.y+A[0][2]*v.z,
+    A[1][0]*v.x+A[1][1]*v.y+A[1][2]*v.z,
+    A[2][0]*v.x+A[2][1]*v.y+A[2][2]*v.z
+  ];
+}
+
+// ── Compute alignment (button handler) ────────────────────────
+
+function computeAlignment() {
+  if (state.pairs.length < MIN_PAIRS) return;
+
+  state.phase = 'align';
+  updateStageBadge();
+
+  const pairsA = state.pairs.map(p => p.aPos);
+  const pairsB = state.pairs.map(p => p.bPos);
+  const M = computeSVDAlignment(pairsA, pairsB);
+
+  currentTransform.copy(M);
+
+  // Compute coarse RMSE using TRUE correspondences (not student pairs)
+  const coarseRMSE = computeTrueRMSE(M);
+
+  // Animate transition to merged view
+  animateToMerged(M, coarseRMSE);
+}
+
+function computeTargetRMSE(M) {
+  // RMSE using only the student's selected pairs (what SVD optimized for)
+  let sumSq = 0;
+  for (const p of state.pairs) {
+    const transformed = p.bPos.clone().applyMatrix4(M);
+    sumSq += transformed.distanceToSquared(p.aPos);
+  }
+  return Math.sqrt(sumSq / state.pairs.length) * 1000; // mm
+}
+
+function computeTrueRMSE(M) {
+  // RMSE using the CORRECT correspondences (target i ↔ target i)
+  // This is the real measure — wrong pairs can fool SVD but not this.
+  let sumSq = 0;
+  for (let i = 0; i < targetWorldA.length; i++) {
+    const transformed = targetWorldB[i].clone().applyMatrix4(M);
+    sumSq += transformed.distanceToSquared(targetWorldA[i]);
+  }
+  return Math.sqrt(sumSq / targetWorldA.length) * 1000; // mm
+}
+
+function animateToMerged(M, finalRMSE) {
+  // Build merged scene
+  const cloudA_m = createPointsMesh(pointsA_positions, SCAN_A_COLOR, 0.03);
+  sceneM.add(cloudA_m);
+
+  // Transform B positions
+  const transformedB = applyTransformToPositions(pointsB_original, M);
+  cloudB_merged = createPointsMesh(transformedB, SCAN_B_COLOR, 0.03);
+  sceneM.add(cloudB_merged);
+
+  // Add target markers in merged scene
+  for (const p of state.pairs) {
+    const markerA = createTargetSphere(p.aPos, SCAN_A_COLOR, 0.4);
+    sceneM.add(markerA);
+    const tB = p.bPos.clone().applyMatrix4(M);
+    const markerB = createTargetSphere(tB, SCAN_B_COLOR, 0.4);
+    sceneM.add(markerB);
+  }
+
+  // Transition: fade out split, fade in merged
+  document.getElementById('vp-a-wrap').classList.add('hidden');
+  document.getElementById('vp-b-wrap').classList.add('hidden');
+  document.getElementById('vp-m-wrap').classList.remove('hidden');
+
+  // Resize merged
+  setTimeout(() => resizeAll(), 50);
+
+  // Update RMSE display
+  updateRMSE(finalRMSE);
+  updateTransformDisplay(M);
+  rmseHistory.push(finalRMSE);
+  drawRMSEChart();
+
+  // Enable ICP button
+  document.getElementById('btn-align').disabled = true;
+  document.getElementById('btn-icp').disabled = false;
+}
+
+// ── ICP pre-computation ───────────────────────────────────────
+
+function precomputeICP() {
+  // We know the ground-truth inverse transform.
+  // The coarse alignment will be close but not perfect.
+  // We simulate ICP by interpolating from coarse to near-perfect alignment.
+  // Each iteration reduces the remaining error by ~60-70%.
+
+  // The "perfect" transform is the inverse of the ground-truth
+  // We'll compute it when ICP is triggered, using the actual coarse result.
+  icpSequence = [];
+}
+
+function generateICPSequence(coarseMatrix) {
+  // Perfect inverse of ground-truth
+  const perfect = new THREE.Matrix4();
+  const gtM = createGroundTruthTransform();
+  perfect.copy(gtM).invert();
+
+  // Evaluate how good the coarse alignment actually is (true correspondences)
+  const coarseTrueRMSE = computeTrueRMSE(coarseMatrix);
+
+  // Decompose coarse and perfect into position + quaternion
+  const coarsePos = new THREE.Vector3(), coarseQuat = new THREE.Quaternion(), coarseScale = new THREE.Vector3();
+  const perfPos = new THREE.Vector3(), perfQuat = new THREE.Quaternion(), perfScale = new THREE.Vector3();
+  coarseMatrix.decompose(coarsePos, coarseQuat, coarseScale);
+  perfect.decompose(perfPos, perfQuat, perfScale);
+
+  // Determine ICP convergence ceiling based on coarse quality.
+  // Good coarse (< 30mm): ICP converges to ground truth
+  // Medium coarse (30-100mm): ICP improves but plateaus at a bad local min
+  // Bad coarse (> 100mm): ICP barely helps, stays stuck
+  let convergenceFraction; // how far toward perfect does ICP get? 1.0 = perfect
+  let finalNoiseMM;       // residual noise added at convergence
+
+  if (coarseTrueRMSE < 30) {
+    // Good coarse — ICP reaches ground truth
+    convergenceFraction = 1.0;
+    finalNoiseMM = 1.5 + Math.random() * 1.5; // 1.5-3mm
+  } else if (coarseTrueRMSE < 100) {
+    // Medium — ICP gets partway there, stuck in local min
+    convergenceFraction = 0.3 + Math.random() * 0.2; // only 30-50% of the way
+    finalNoiseMM = coarseTrueRMSE * (0.4 + Math.random() * 0.2); // 40-60% of original error remains
+  } else {
+    // Bad — ICP barely moves, local minimum near starting point
+    convergenceFraction = 0.05 + Math.random() * 0.1; // 5-15% improvement
+    finalNoiseMM = coarseTrueRMSE * (0.7 + Math.random() * 0.15); // 70-85% of error remains
+  }
+
+  // Compute the ICP "attractor" — the local minimum it converges toward
+  const attractorPos = coarsePos.clone().lerp(perfPos, convergenceFraction);
+  const attractorQuat = coarseQuat.clone().slerp(perfQuat, convergenceFraction);
+
+  const seq = [];
+  for (let i = 0; i < ICP_ITERATIONS; i++) {
+    // Exponential convergence toward the attractor (not necessarily the truth)
+    const t = 1 - Math.pow(0.35, i + 1);
+    const pos = coarsePos.clone().lerp(attractorPos, t);
+    const quat = coarseQuat.clone().slerp(attractorQuat, t);
+    const M = new THREE.Matrix4().compose(pos, quat, new THREE.Vector3(1,1,1));
+
+    const rmse = computeTrueRMSE(M);
+    seq.push({ matrix: M, rmse });
+  }
+
+  // Final step: at the attractor with noise
+  const finalM = new THREE.Matrix4().compose(attractorPos, attractorQuat, new THREE.Vector3(1,1,1));
+  const finalRMSE = computeTrueRMSE(finalM);
+  seq.push({ matrix: finalM, rmse: Math.max(finalRMSE, finalNoiseMM) });
+
+  return seq;
+}
+
+// ── Run ICP (button handler) ──────────────────────────────────
+
+function runICP() {
+  if (state.phase !== 'align') return;
+  state.phase = 'icp';
+  state.icpRunning = true;
+  updateStageBadge();
+
+  document.getElementById('btn-icp').disabled = true;
+
+  // Show explainer
+  document.getElementById('icp-explainer').classList.add('visible');
+
+  // Generate sequence from current coarse transform
+  icpSequence = generateICPSequence(currentTransform);
+
+  let step = 0;
+  const totalSteps = icpSequence.length;
+  document.getElementById('icp-iter-total').textContent = totalSteps;
+
+  function doStep() {
+    if (step >= totalSteps) {
+      state.phase = 'done';
+      state.icpRunning = false;
+      updateStageBadge();
+      document.getElementById('compare-toggle').classList.add('visible');
+
+      // Final ICP step highlight
+      highlightICPStep(4);
+      document.getElementById('icp-iter-num').textContent = '✓';
+
+      // Show verdict after a brief pause
+      const finalRMSE = icpSequence[totalSteps - 1].rmse;
+      setTimeout(() => showVerdict(finalRMSE), 800);
+      return;
+    }
+
+    const s = icpSequence[step];
+    document.getElementById('icp-iter-num').textContent = step + 1;
+
+    // Cycle through ICP sub-steps visually
+    const subStep = step % 3;
+    highlightICPStep(subStep + 1);
+
+    // Update merged cloud B
+    const transformedB = applyTransformToPositions(pointsB_original, s.matrix);
+    cloudB_merged.geometry.setAttribute('position', new THREE.Float32BufferAttribute(transformedB, 3));
+    cloudB_merged.geometry.attributes.position.needsUpdate = true;
+
+    // Update RMSE
+    updateRMSE(s.rmse);
+    rmseHistory.push(s.rmse);
+    drawRMSEChart();
+
+    // Update transform display
+    updateTransformDisplay(s.matrix);
+    currentTransform.copy(s.matrix);
+
+    step++;
+    setTimeout(doStep, 600);
+  }
+
+  setTimeout(doStep, 300);
+}
+
+function highlightICPStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('icp-s' + i);
+    el.classList.toggle('active', i === n);
+  }
+}
+
+function showVerdict(finalRMSE) {
+  const banner = document.getElementById('verdict-banner');
+  const icon = document.getElementById('verdict-icon');
+  const title = document.getElementById('verdict-title');
+  const detail = document.getElementById('verdict-detail');
+  const actions = document.getElementById('verdict-actions');
+
+  banner.className = 'visible';
+  actions.innerHTML = '';
+
+  if (finalRMSE < 5) {
+    banner.classList.add('good');
+    icon.textContent = '✓';
+    title.textContent = 'Excellent Registration';
+    detail.textContent = 'Final RMSE ' + finalRMSE.toFixed(1) + ' mm — sub-centimeter alignment achieved. Your target correspondences were correct and ICP converged to the global minimum.';
+    const btn = document.createElement('button');
+    btn.className = 'verdict-btn dismiss';
+    btn.textContent = 'Continue';
+    btn.onclick = () => banner.classList.remove('visible');
+    actions.appendChild(btn);
+  } else if (finalRMSE < 20) {
+    banner.classList.add('marginal');
+    icon.textContent = '⚠';
+    title.textContent = 'Marginal Registration';
+    detail.textContent = 'Final RMSE ' + finalRMSE.toFixed(1) + ' mm — the alignment is imprecise. One or more target correspondences may be wrong, causing ICP to converge to a local minimum instead of the true solution.';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'verdict-btn retry';
+    retryBtn.textContent = 'Try Again';
+    retryBtn.onclick = () => { banner.classList.remove('visible'); resetAll(); };
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'verdict-btn dismiss';
+    dismissBtn.textContent = 'Inspect Result';
+    dismissBtn.onclick = () => banner.classList.remove('visible');
+    actions.appendChild(retryBtn);
+    actions.appendChild(dismissBtn);
+  } else {
+    banner.classList.add('bad');
+    icon.textContent = '✗';
+    title.textContent = 'Registration Failed';
+    detail.textContent = 'Final RMSE ' + finalRMSE.toFixed(1) + ' mm — the scans are badly misaligned. Wrong target correspondences produced a poor coarse alignment that ICP could not recover from. Look carefully at which sphere in Scan A corresponds to which sphere in Scan B.';
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'verdict-btn retry';
+    retryBtn.textContent = 'Try Again';
+    retryBtn.onclick = () => { banner.classList.remove('visible'); resetAll(); };
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'verdict-btn dismiss';
+    dismissBtn.textContent = 'Inspect Result';
+    dismissBtn.onclick = () => banner.classList.remove('visible');
+    actions.appendChild(retryBtn);
+    actions.appendChild(dismissBtn);
+  }
+}
+
+// ── RMSE display & chart ──────────────────────────────────────
+
+let rmseHistory = [];
+
+function updateRMSE(val) {
+  const el = document.getElementById('rmse-display');
+  el.textContent = val.toFixed(1) + ' mm';
+  el.className = '';
+  if (val < 5) el.classList.add('good');
+  else if (val < 15) el.classList.add('ok');
+  else el.classList.add('bad');
+}
+
+function drawRMSEChart() {
+  const canvas = document.getElementById('rmse-chart');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.parentElement.clientWidth - 28;
+  const h = canvas.parentElement.clientHeight - 70;
+  canvas.width = w * 2; canvas.height = h * 2;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  ctx.scale(2, 2);
+
+  ctx.clearRect(0, 0, w, h);
+
+  if (rmseHistory.length < 1) return;
+
+  const maxRMSE = Math.max(...rmseHistory) * 1.15;
+  const pad = { l: 30, r: 8, t: 6, b: 16 };
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+  // Axes
+  ctx.strokeStyle = '#242a34';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b);
+  ctx.stroke();
+
+  // Y ticks
+  ctx.fillStyle = '#555d6e';
+  ctx.font = '8px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const val = maxRMSE * (1 - i / 3);
+    const y = pad.t + (i / 3) * ph;
+    ctx.fillText(val.toFixed(0), pad.l - 4, y + 3);
+    ctx.strokeStyle = '#1a1e26';
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+  }
+
+  // Line
+  ctx.strokeStyle = '#00e0c0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < rmseHistory.length; i++) {
+    const x = pad.l + (i / Math.max(rmseHistory.length - 1, 1)) * pw;
+    const y = pad.t + (1 - rmseHistory[i] / maxRMSE) * ph;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Dots
+  ctx.fillStyle = '#00e0c0';
+  for (let i = 0; i < rmseHistory.length; i++) {
+    const x = pad.l + (i / Math.max(rmseHistory.length - 1, 1)) * pw;
+    const y = pad.t + (1 - rmseHistory[i] / maxRMSE) * ph;
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // X label
+  ctx.fillStyle = '#555d6e';
+  ctx.textAlign = 'center';
+  ctx.font = '7px JetBrains Mono, monospace';
+  ctx.fillText('iteration', w / 2, h - 1);
+}
+
+function updateTransformDisplay(M) {
+  const el = document.getElementById('transform-matrix');
+  const e = M.elements; // column-major
+  el.innerHTML = '';
+  for (let row = 0; row < 4; row++) {
+    const div = document.createElement('div');
+    div.className = 'row';
+    for (let col = 0; col < 4; col++) {
+      const span = document.createElement('span');
+      span.className = 'cell' + (col === 3 ? ' t' : '');
+      span.textContent = e[col * 4 + row].toFixed(4);
+      div.appendChild(span);
+    }
+    el.appendChild(div);
+  }
+}
+
+// ── Compare toggle ────────────────────────────────────────────
+
+document.getElementById('compare-cb').addEventListener('change', e => {
+  state.compareMode = e.target.checked;
+  if (state.compareMode) {
+    startCompareFlicker();
+  }
+});
+
+let flickerInterval = null;
+function startCompareFlicker() {
+  let showPre = false;
+  // Store final positions
+  const finalB = new Float32Array(cloudB_merged.geometry.attributes.position.array);
+  // Pre-alignment = original untransformed
+  const preB = new Float32Array(pointsB_original);
+
+  flickerInterval = setInterval(() => {
+    if (!state.compareMode) { clearInterval(flickerInterval); return; }
+    showPre = !showPre;
+    const data = showPre ? preB : finalB;
+    cloudB_merged.geometry.setAttribute('position', new THREE.Float32BufferAttribute(data, 3));
+    cloudB_merged.geometry.attributes.position.needsUpdate = true;
+  }, 500);
+}
+
+// ── Stage badge ───────────────────────────────────────────────
+
+function updateStageBadge() {
+  const el = document.getElementById('stage-badge');
+  const labels = {
+    pick: ['① Pick Targets', 'stage-pick'],
+    align: ['② Coarse Alignment', 'stage-align'],
+    icp: ['③ ICP Refinement', 'stage-icp'],
+    done: ['✓ Complete', 'stage-done']
+  };
+  const [text, cls] = labels[state.phase];
+  el.textContent = text;
+  el.className = 'stage-badge ' + cls;
+}
+
+// ── Overlay ───────────────────────────────────────────────────
+
+function dismissOverlay() {
+  document.getElementById('instruction-overlay').classList.add('hidden');
+}
+
+// ── Reset ─────────────────────────────────────────────────────
+
+function resetAll() {
+  // Clear state
+  state = { phase: 'pick', pickingScan: 'a', pendingA: null, pairs: [], icpStep: 0, icpRunning: false, compareMode: false, showPreAlignment: false };
+  rmseHistory = [];
+
+  // Clear merged scene
+  while (sceneM.children.length > 0) sceneM.remove(sceneM.children[0]);
+  sceneM.add(new THREE.AmbientLight(0x404050, 0.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.4);
+  dir.position.set(5, 15, 5);
+  sceneM.add(dir);
+  const grid = new THREE.GridHelper(14, 14, 0x1a1e26, 0x1a1e26);
+  grid.position.y = -0.01;
+  sceneM.add(grid);
+
+  // Reset viewports
+  document.getElementById('vp-a-wrap').classList.remove('hidden');
+  document.getElementById('vp-b-wrap').classList.remove('hidden');
+  document.getElementById('vp-m-wrap').classList.add('hidden');
+
+  // Reset targets
+  for (const t of targetsA) { t.material.color.set(0xffffff); t.material.emissive.set(0xffffff); t.material.emissiveIntensity = 0.3; t.material.opacity = 0.35; }
+  for (const t of targetsB) { t.material.color.set(0xffffff); t.material.emissive.set(0xffffff); t.material.emissiveIntensity = 0.3; t.material.opacity = 0.35; }
+
+  // Reset UI
+  document.getElementById('target-tbody').innerHTML = '';
+  document.getElementById('rmse-display').textContent = '— mm';
+  document.getElementById('rmse-display').className = '';
+  document.getElementById('btn-align').disabled = true;
+  document.getElementById('btn-icp').disabled = true;
+  document.getElementById('compare-toggle').classList.remove('visible');
+  document.getElementById('icp-explainer').classList.remove('visible');
+  document.getElementById('compare-cb').checked = false;
+  document.getElementById('verdict-banner').className = '';
+
+  updateTransformDisplay(new THREE.Matrix4());
+  updateStageBadge();
+
+  // Clear chart
+  const chartCanvas = document.getElementById('rmse-chart');
+  const ctx = chartCanvas.getContext('2d');
+  ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+
+  if (flickerInterval) clearInterval(flickerInterval);
+
+  setTimeout(() => resizeAll(), 50);
+}
+
+// ── Render loop ───────────────────────────────────────────────
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!document.getElementById('vp-a-wrap').classList.contains('hidden')) {
+    rendererA.render(sceneA, cameraA);
+    rendererB.render(sceneB, cameraB);
+  }
+  if (!document.getElementById('vp-m-wrap').classList.contains('hidden')) {
+    rendererM.render(sceneM, cameraM);
+  }
+}
+
+// ── Resize ────────────────────────────────────────────────────
+
+function resizeAll() {
+  const pairs = [
+    [rendererA, cameraA, 'vp-a-wrap'],
+    [rendererB, cameraB, 'vp-b-wrap'],
+    [rendererM, cameraM, 'vp-m-wrap'],
+  ];
+  for (const [renderer, camera, wrapId] of pairs) {
+    const wrap = document.getElementById(wrapId);
+    if (wrap.classList.contains('hidden')) continue;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    if (w === 0 || h === 0) continue;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+window.addEventListener('resize', resizeAll);
+
+// ── File loader for real .pcb data ────────────────────────────
+
+function parsePCB(buffer) {
+  const view = new DataView(buffer);
+  // Header: magic(4) + version(4) + numPoints(4) + offsetX(8) + offsetY(8) + offsetZ(8) = 36 bytes
+  const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+  if (magic !== 'PCB1') throw new Error('Not a PCB file');
+  const numPoints = view.getUint32(8, true);
+  // Skip to data at byte 36: float16 x,y,z + uint8 intensity per point = 7 bytes
+  // Actually the format from the converter uses: 3 x float32 + 1 x uint8 = 13 bytes per point
+  // Let's try to detect format from file size
+  const headerSize = 36;
+  const dataSize = buffer.byteLength - headerSize;
+  const bpp13 = Math.floor(dataSize / 13);
+  const bpp7 = Math.floor(dataSize / 7);
+
+  let positions, intensities;
+  if (bpp13 === numPoints) {
+    // float32 x 3 + uint8
+    positions = new Float32Array(numPoints * 3);
+    intensities = new Float32Array(numPoints);
+    for (let i = 0; i < numPoints; i++) {
+      const off = headerSize + i * 13;
+      positions[i*3] = view.getFloat32(off, true);
+      positions[i*3+1] = view.getFloat32(off+4, true);
+      positions[i*3+2] = view.getFloat32(off+8, true);
+      intensities[i] = view.getUint8(off+12) / 255;
+    }
+  } else {
+    // Try float16 (not implemented — fallback to treating as float32 x3 + uint8 with adjusted count)
+    const actualPoints = Math.floor(dataSize / 13);
+    positions = new Float32Array(actualPoints * 3);
+    intensities = new Float32Array(actualPoints);
+    for (let i = 0; i < actualPoints; i++) {
+      const off = headerSize + i * 13;
+      positions[i*3] = view.getFloat32(off, true);
+      positions[i*3+1] = view.getFloat32(off+4, true);
+      positions[i*3+2] = view.getFloat32(off+8, true);
+      intensities[i] = view.getUint8(off+12) / 255;
+    }
+  }
+  return { positions, intensities, numPoints };
+}
+
+document.getElementById('file-a').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('file-a-status').textContent = file.name;
+  try {
+    const buf = await file.arrayBuffer();
+    const data = parsePCB(buf);
+    // Replace scene A cloud
+    sceneA.remove(cloudA);
+    cloudA = createPointsMesh(data.positions, SCAN_A_COLOR, 0.02);
+    sceneA.add(cloudA);
+    pointsA_positions = data.positions;
+    document.getElementById('file-a-status').textContent = file.name + ' (' + data.numPoints + ' pts)';
+  } catch (err) {
+    document.getElementById('file-a-status').textContent = 'Error: ' + err.message;
+  }
+});
+
+document.getElementById('file-b').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('file-b-status').textContent = file.name;
+  try {
+    const buf = await file.arrayBuffer();
+    const data = parsePCB(buf);
+    sceneB.remove(cloudB);
+    cloudB = createPointsMesh(data.positions, SCAN_B_COLOR, 0.02);
+    sceneB.add(cloudB);
+    pointsB_positions = data.positions;
+    pointsB_original = new Float32Array(data.positions);
+    document.getElementById('file-b-status').textContent = file.name + ' (' + data.numPoints + ' pts)';
+  } catch (err) {
+    document.getElementById('file-b-status').textContent = 'Error: ' + err.message;
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────
+buildScenes();
+setTimeout(resizeAll, 100);
+</script>
+</body>
+</html>
